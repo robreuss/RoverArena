@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key></key>
+	<string></string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_FrontRoverMotors._tcp</string>
+		<string>_FrontRoverMotors._udp</string>
+		<string>_RearRoverMotors._tcp</string>
+		<string>_RearRoverMotors._udp</string>
+		<string>_NearbyRover._udp</string>
+		<string>_NearbyRover._tcp</string>
+		<string>_iPhone12ProMax_Video._udp</string>
+		<string>_iPhone12ProMax_Video._tcp</string>
+		<string>_iPadPro12_Video._udp</string>
+		<string>_iPadPro12_Video._tcp</string>
+		<string>_iPadPro12_ObjectCapture._tcp</string>
+		<string>_iPadPro12_ObjectCapture._udp</string>
+		<string>_iPhoneX_Video._udp</string>
+		<string>_iPhoneX_Video._tcp</string>
+		<string>_iPhoneX_Sensors._tcp</string>
+		<string>_iPhoneX_Sensors._udp</string>
+		<string>_iPhoneX_ObjectCapture._tcp</string>
+		<string>_iPhoneX_ObjectCapture._udp</string>
+		<string>_iPadPro12_Sensors._tcp</string>
+		<string>_iPadPro12_Sensors._udp</string>
+		<string>_iPhone12ProMax_Sensors._tcp</string>
+		<string>_iPhone12ProMax_Sensors._udp</string>
+		<string>_iPhone12ProMax_ObjectCapture._udp</string>
+		<string>_iPhone12ProMax_ObjectCapture._tcp</string>
+		<string>_iPhoneXSMax_Video._tcp</string>
+		<string>_iPhoneXSMax_Video._udp</string>
+		<string>_iPhoneXSMax_Sensors._tcp</string>
+		<string>_iPhoneXSMax_Sensors._udp</string>
+		<string>_iPhoneXSMax_ObjectCapture._udp</string>
+		<string>_iPhoneXSMax_ObjectCapture._tcp</string>
+		<string>_iPhone14ProMax_Sensors._udp</string>
+		<string>_iPhone14ProMax_Sensors._tcp</string>
+		<string>_PanTilt._tcp</string>
+		<string>_PanTilt._udp</string>
+		<string>_iPhone14ProMax_Channel._udp</string>
+		<string>_iPhone14ProMax_Channel._tcp</string>
+		<string>_iPhoneXSMax_Channel._udp</string>
+		<string>_iPhoneXSMax_Channel._tcp</string>
+		<string>_iPadPro12_Channel._udp</string>
+		<string>_iPadPro12_Channel._tcp</string>
+		<string>_RoverMotorsTelemetry._tcp</string>
+		<string>_RoverMotorsTelemetry._udp</string>
+		<string>_ar-collab._tcp</string>
+		<string>_ar-collab._udp</string>
+		<string>_RemoteGameController._udp</string>
+		<string>_RemoteGameController._tcp</string>
+		<string>_iPhone12Pro_Channel._udp</string>
+		<string>_iPhone12Pro_Channel._tcp</string>
+	</array>
+</dict>
+</plist>
