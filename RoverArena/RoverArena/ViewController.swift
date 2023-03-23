@@ -1098,24 +1098,48 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         channels.annonceSessionID(arView.session.identifier.uuidString)
     }
     
-    
-    var fpsTimer = Date()
-    var fpsCount = 0
-    
-    var testTime = Date()
-    var fpsTestTime = Date()
-    var fpsTestCount = 0.0
-    var lastTrackingState: ARCamera.TrackingState?
-    var frameCount = 0
+ 
 
-    let framesPerUpdate = 60 / channels.imageProcessingFPS
+    
+    //var fpsTimer = Date()
+    //var fpsCount = 0
+    
+
+
+    var lastTrackingState: ARCamera.TrackingState?
+
 
     // Variables
-    var frameCounter = 0
+    //var frameCounter = 0.0
+    
+    // LAST CHAT APPROACH
+    // Constants
+    //
+
+    // Transmission rate debug
+    var debugFrameCount = 0
+    var debugTestTime = Date()
+    
+    var lastTransimittedImageTime = CACurrentMediaTime()
+    var accumulatedTransmissionTime: Double = 0.0
+    
+    var systemFPSMonitorDisplayFrequency = 5.0 // seconds
+    var systemFPSMonitorTimer = Date()
+    var systemFPSMonitorCount = 0.0
     
     let statusMapping: [ARFrame.WorldMappingStatus: Channels.WorldMappingStatus] = [.notAvailable: .notAvailable, .limited: .limited, .extending: .extending, .mapped: .mapped]
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         
+        systemFPSMonitorCount += 1
+        if abs(systemFPSMonitorTimer.timeIntervalSinceNow) >= systemFPSMonitorDisplayFrequency {
+            print("System FPS: \((systemFPSMonitorCount / systemFPSMonitorDisplayFrequency)) - Total Frames in \(systemFPSMonitorDisplayFrequency) seconds: \(systemFPSMonitorCount)")
+            systemFPSMonitorCount = 0
+            systemFPSMonitorTimer = Date()
+        }
+        
+        
+        let timePerFrame = 1.0 / Double(channels.imageProcessingFPS)
+
         //channels.localDeviceState.worldMappingStatus = frame.worldMappingStatus.rawValue
         channels.localDeviceState.worldMappingStatus = statusMapping[frame.worldMappingStatus]!
         if Common.getHostDevice() != onboardDevice {
@@ -1167,30 +1191,34 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         coordinates.text = "(\(String(format: "%.2f", destinationPoint.x)), \(String(format: "%.2f", destinationPoint.y)))"
     
         lastTrackingState = frame.camera.trackingState
-        
-        fpsTestCount += 1
-        if abs(fpsTestTime.timeIntervalSinceNow) > 10 {
-                print("FPS test: \((fpsTestCount / 10)) - Frames: \(fpsTestCount)")
-            fpsTestCount = 0
-            fpsTestTime = Date()
-        }
+
         // 30 fps: 0.33333
         // Required time interval: 0.03333
         // seconds
 
-        
-        
-        
-        let requiredTimeInterval = (1 / channels.imageProcessingFPS)
-        if abs(fpsTimer.timeIntervalSinceNow) > requiredTimeInterval {
+        let currentTransmissionTime = CACurrentMediaTime()
+        let deltaTime = currentTransmissionTime - lastTransimittedImageTime
+        lastTransimittedImageTime = currentTransmissionTime
 
-            fpsTimer = Date()
+        // Add elapsed time to accumulated time
+        accumulatedTransmissionTime += deltaTime
+
+        // Process frames according to target fps
+        if accumulatedTransmissionTime >= timePerFrame {
+
+            // Subtract time for processed frame from accumulated time
+            accumulatedTransmissionTime -= timePerFrame
             
-            frameCount += 1
-            if abs(testTime.timeIntervalSinceNow) > 10 {
-                print("Frame count: \(frameCount / 10)")
-                frameCount = 0
-                testTime = Date()
+        //let requiredTimeInterval = (1 / channels.imageProcessingFPS)
+        //if abs(fpsTimer.timeIntervalSinceNow) > requiredTimeInterval {
+
+            //fpsTimer = Date()
+            
+            debugFrameCount += 1
+            if abs(debugTestTime.timeIntervalSinceNow) > 10 {
+                print("Debug frames processes per sec: \(debugFrameCount / 10)")
+                debugFrameCount = 0
+                debugTestTime = Date()
             }
             
             if Common.getHostDevice() == onboardDevice {

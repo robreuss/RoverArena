@@ -17,80 +17,6 @@ class Channels {
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
 
-    
-    enum VideoSource: Encodable, Decodable {
-        case localAR
-        case onboardSource
-    }
-    
-    var worldState: Channels.WorldState = Channels.WorldState() {
-        didSet {
-            
-            // Update UI here
-            
-        }
-    }
-    var localDeviceState: Channels.DeviceState = Channels.DeviceState(imageDisplayEnabled: false)
-
-    public struct WorldState: Encodable, Decodable {
-
-        var devicesState: [SourceDevice: DeviceState] = [.iPhone12Pro: DeviceState(), .iPadPro12: DeviceState(), .iPhone14ProMax: DeviceState(), .iPhoneXSMax: DeviceState()]
-
-        
-    }
-
-    // Broadcast the state of the world to all consumer devices
-    func broadcastWorldState() {
-        let worldStateJSON = try! jsonEncoder.encode(worldState)
-        for device in consumerDevices.keys {
-            sendCommand(type: .worldStatusUpdate, floatValue: 0.0, pointValue: CGPointZero, stringValue: "", boolValue: false, dataValue: worldStateJSON, toDevice: device)
-        }
-    }
-    
-    public var imageFeedRequired: Bool {
-        let count = worldState.devicesState.values.filter { $0.imageDisplayEnabled == true }.count
-        if count > 0 {
-            return true
-        } else {
-            return false
-        }
-    }
-    
-    public enum DeviceP2PConnectedStatus: String, Encodable, Decodable {
-        case disconnected = "Disconnected"
-        case waiting = "Waiting To Participate"
-        case connected = "Connected"
-        case joined = "Joined"
-    }
-    
-    public enum DeviceARStatus: String, Encodable, Decodable {
-        case disconnected = "Disconnected"
-        case waiting = "Waiting To Participate"
-        case connected = "Connected"
-        case joined = "Joined"
-    }
-
-    enum ChannelStatus: String, Encodable, Decodable {
-        case offline = "Offline"
-        case connected = "Connected"
-    }
-    
-    enum WorldMappingStatus: String, Encodable, Decodable {
-        case mapped = "Mapped"
-        case notAvailable = "Not Available"
-        case extending = "Extending"
-        case limited = "Limited"
-    }
-    
-    struct DeviceState: Encodable, Decodable {
-        //let statusMappingToString: [ARFrame.WorldMappingStatus: String] = [.notAvailable: "Not Available", .limited: "Limited", .extending: "Extending", .mapped: "Mapped"]
-        var sourceDevice: SourceDevice = .none
-        var sessionIdentifier: String = ""
-        var videoSourceDisplaying: VideoSource  = .localAR // UI tracking value
-        var deviceConnectedStatus: DeviceP2PConnectedStatus = .disconnected
-        var imageDisplayEnabled: Bool = false
-        var worldMappingStatus: WorldMappingStatus = .notAvailable
-    }
 
     public enum CommandType: Int16, Codable {
         
@@ -130,11 +56,13 @@ class Channels {
     public typealias DeviceConnectedHandler = (SourceDevice) -> Void
     public typealias CommandHandler = (SourceDevice, Command) -> Void
     public typealias ImageHandler = (SourceDevice, Data) -> Void
+    public typealias StateHandler = (SourceDevice, Data) -> Void
     public typealias CollaborationHandler = (SourceDevice, Data) -> Void
 
     let eid_command: Int8 = 1
     let eid_image: Int8 = 2
-    let eid_collaboration: Int8 = 3
+    let eid_state: Int8 = 3
+    let eid_collaboration: Int8 = 4
     
     var consumerIdentity = ""
     
@@ -144,11 +72,24 @@ class Channels {
     var consumerDevices: [SourceDevice: Device] = [:]
     var serverDevices: [SourceDevice: ServerDevice] = [:]
     
+    enum ContentType {
+        case command
+        case image
+        case state
+        case collaboration
+    }
+    
+    var elementsConsumer: [ContentType: [SourceDevice: Element]]?
+    var elementsServer: [ContentType: [SourceDevice: Element]]?
+    
     var consumerCommandElements: [SourceDevice: Element] = [:]
     var serverCommandElements: [SourceDevice: Element] = [:]
     
     var consumerImageElements: [SourceDevice: Element] = [:]
     var serverImageElements: [SourceDevice: Element] = [:]
+    
+    var consumerStateElements: [SourceDevice: Element] = [:]
+    var serverStateElements: [SourceDevice: Element] = [:]
     
     var consumerCollaborationElements: [SourceDevice: Element] = [:]
     var serverCollaborationElements: [SourceDevice: Element] = [:]
@@ -156,6 +97,7 @@ class Channels {
     var deviceConnectedHandler: DeviceConnectedHandler?
     var commandHandlers: [SourceDevice: CommandHandler] = [:]
     var imageHandlers: [SourceDevice: ImageHandler] = [:]
+    var stateHandlers: [SourceDevice: StateHandler] = [:]
     var collaborationHandlers: [SourceDevice: CollaborationHandler] = [:]
     
     var controllerDevices: Set<SourceDevice>?
@@ -166,8 +108,26 @@ class Channels {
             imageAlreadySent = false
         }
     }
-    var imageProcessingFPS: Double = 30
+    var imageProcessingFPS: Double = 45
     var imageAlreadySent = true // false will break this
+
+    // Broadcast the state of the world to all consumer devices
+    func broadcastWorldState() {
+        let worldStateJSON = try! jsonEncoder.encode(SystemState.shared.worldState)
+        for device in consumerDevices.keys {
+            sendCommand(type: .worldStatusUpdate, floatValue: 0.0, pointValue: CGPointZero, stringValue: "", boolValue: false, dataValue: worldStateJSON, toDevice: device)
+        }
+    }
+    
+    public func sendStateDataToAllClientDevices(_ imageData:Data) {
+        
+        for sourceDevice in consumerDevices.keys {
+            if sourceDevice != Common.getHostDevice() {
+                sendStateData(imageData, toDevice: sourceDevice)
+            }
+        }
+        
+    }
     
     func deviceConnected(device: Device) {
         
@@ -198,6 +158,12 @@ class Channels {
     public func setImageHandler(_ handler: @escaping ImageHandler, forDevice: SourceDevice) {
         
         imageHandlers[forDevice] = handler
+
+    }
+    
+    public func setStateHandler(_ handler: @escaping StateHandler, forDevice: SourceDevice) {
+        
+        stateHandlers[forDevice] = handler
 
     }
     
@@ -252,15 +218,17 @@ class Channels {
     }
 
     func reportDeviceStatusToOnboardDevice() {
-        let deviceEncoded = try! jsonEncoder.encode(localDeviceState)
+        let deviceEncoded = try! jsonEncoder.encode(SystemState.shared.localDeviceState)
         sendCommand(type: .deviceStatusUpdate, floatValue: 0.0, pointValue: CGPointZero, stringValue: "", boolValue: false, dataValue: deviceEncoded, toDevice: Common.shared.unwrappedDeviceType(.onboard))
     }
     
     func annonceSessionID(_ sessionID: String) {
-        localDeviceState.sessionIdentifier = sessionID
-        print("Accouncing session ID broadcast from \(Common.getHostDevice())")
-        reportDeviceStatusToOnboardDevice()
-        //sendCommand(type: .broadcastSessionID, floatValue: 0.0, pointValue: CGPointZero, stringValue: sessionID, boolValue: false, dataValue: Data(), toDevice: Common.shared.unwrappedDeviceType(.onboard))
+        if var myState = SystemState.shared.worldState.myState {
+            myState.sessionIdentifier = sessionID
+            print("Accouncing session ID broadcast from \(Common.getHostDevice())")
+            reportDeviceStatusToOnboardDevice()
+            //sendCommand(type: .broadcastSessionID, floatValue: 0.0, pointValue: CGPointZero, stringValue: sessionID, boolValue: false, dataValue: Data(), toDevice: Common.shared.unwrappedDeviceType(.onboard))
+        }
     }
     
     public func setupConsumerOfServerDevice(_ serviceDevice: SourceDevice) {
@@ -289,6 +257,7 @@ class Channels {
             
             self.consumerCommandElements[serviceDevice] = device.attachElement(Element(identifier: self.eid_command, displayName: "Command", proto: .tcp, dataType: .Data))
             self.consumerImageElements[serviceDevice] = device.attachElement(Element(identifier: self.eid_image, displayName: "Image", proto: .tcp, dataType: .Data))
+            self.consumerStateElements[serviceDevice] = device.attachElement(Element(identifier: self.eid_state, displayName: "State", proto: .tcp, dataType: .Data))
             self.consumerCollaborationElements[serviceDevice] = device.attachElement(Element(identifier: self.eid_collaboration, displayName: "Collaboration", proto: .tcp, dataType: .Data))
             
             var gameControllerElements = [
@@ -360,6 +329,7 @@ class Channels {
             
             self.serverCommandElements[sourceDevice] = clientDevice.attachElement(Element(identifier: self.eid_command, displayName: "Command", proto: .tcp, dataType: .Data))
             self.serverImageElements[sourceDevice] = clientDevice.attachElement(Element(identifier: self.eid_image, displayName: "Image", proto: .tcp, dataType: .Data))
+            self.serverStateElements[sourceDevice] = clientDevice.attachElement(Element(identifier: self.eid_state, displayName: "Image", proto: .tcp, dataType: .Data))
             self.serverCollaborationElements[sourceDevice] = clientDevice.attachElement(Element(identifier: self.eid_collaboration, displayName: "Collaboration", proto: .tcp, dataType: .Data))
       
             self.serverCommandElements[sourceDevice]?.handler = { element, device in
@@ -414,7 +384,7 @@ class Channels {
                     if !self.imageAlreadySent {
                         for device in self.controllerDevices! {
                             if device != Common.getHostDevice() {
-                                if let deviceState = self.worldState.devicesState[device] {
+                                if let deviceState = SystemState.shared.worldState.devicesState[device] {
                                     if deviceState.imageDisplayEnabled {
                                         if let i = cachedImageData {
                                             self.sendImageData(i, toDevice: device)
@@ -492,6 +462,23 @@ class Channels {
                     
                 } catch {
                     logError("Image transmission failed to device: \(toDevice.rawValue)")
+                }
+            }
+            
+        }
+    }
+    
+    public func sendStateData(_ stateData: Data, toDevice: SourceDevice) {
+
+        if let device = consumerDevices[toDevice] {
+            
+            if let element = serverStateElements[toDevice] {
+                element.dataValue = stateData
+                do {
+                    try device.send(element: element)
+                    
+                } catch {
+                    logError("State transmission failed to device: \(toDevice.rawValue)")
                 }
             }
             

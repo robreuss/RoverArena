@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		2007190C29BABD1C0076924F /* OldCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2007190B29BABD1C0076924F /* OldCode.swift */; };
+		202D652D29CB85AE005C785A /* SystemState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202D652C29CB85AE005C785A /* SystemState.swift */; };
 		20746CE529A27298008FC841 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20746CE429A27298008FC841 /* AppDelegate.swift */; };
 		20746CE729A27298008FC841 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20746CE629A27298008FC841 /* ViewController.swift */; };
 		20746CEC29A27298008FC841 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 20746CEA29A27298008FC841 /* Main.storyboard */; };
@@ -25,6 +26,7 @@
 
 /* Begin PBXFileReference section */
 		2007190B29BABD1C0076924F /* OldCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OldCode.swift; sourceTree = "<group>"; };
+		202D652C29CB85AE005C785A /* SystemState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemState.swift; sourceTree = "<group>"; };
 		20746CE129A27298008FC841 /* RoverArena.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RoverArena.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20746CE429A27298008FC841 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		20746CE629A27298008FC841 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -79,6 +81,7 @@
 				20746CE429A27298008FC841 /* AppDelegate.swift */,
 				20746CFC29A580C2008FC841 /* WorldScan.swift */,
 				20746D1E29A6571F008FC841 /* Channels.swift */,
+				202D652C29CB85AE005C785A /* SystemState.swift */,
 				20746CE629A27298008FC841 /* ViewController.swift */,
 				2007190B29BABD1C0076924F /* OldCode.swift */,
 				208A4C3229B63266000FE5C5 /* MultipeerSession.swift */,
@@ -189,6 +192,7 @@
 				20746CE529A27298008FC841 /* AppDelegate.swift in Sources */,
 				20746D1F29A6571F008FC841 /* Channels.swift in Sources */,
 				20746CF829A28D12008FC841 /* Experience.rcproject in Sources */,
+				202D652D29CB85AE005C785A /* SystemState.swift in Sources */,
 				20773B1729C2A23A005CD27D /* VideoStreamView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
