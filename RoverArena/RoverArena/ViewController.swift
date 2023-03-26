@@ -63,28 +63,29 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     
     func toggleVideoSourceDisplaying() {
         
-        if UIDevice.current.userInterfaceIdiom == .phone {
+        //if UIDevice.current.userInterfaceIdiom == .phone {
             if self.deviceRole != .onboard {
-                if channels.localDeviceState.videoSourceDisplaying == .localAR {
+                if SystemState.shared.myDeviceState.videoSourceDisplaying == .localAR {
                     
                     arView.isHidden = true
                     videoStreamView.isHidden = false
-                    channels.localDeviceState.videoSourceDisplaying = .onboardSource
-                    channels.sendCommand(type: .imagefeedRequest, floatValue: 0.0, pointValue: CGPointZero, stringValue: "", boolValue: true, dataValue: Data(), toDevice: onboardDevice)
+                    SystemState.shared.myDeviceState.videoSourceDisplaying = .imageFeed
+                    SystemState.shared.myDeviceState.requestedImageFeedSources = [Common.shared.onboardDevice()]
                     arView.session.pause()
                     
-                } else if channels.localDeviceState.videoSourceDisplaying == .onboardSource {
+                } else if SystemState.shared.myDeviceState.videoSourceDisplaying == .imageFeed {
                     
                     arView.isHidden = false
                     videoStreamView.isHidden = true
-                    channels.localDeviceState.videoSourceDisplaying = .localAR
-                    channels.sendCommand(type: .imagefeedRequest, floatValue: 0.0, pointValue: CGPointZero, stringValue: "", boolValue: false, dataValue: Data(), toDevice: onboardDevice)
+                    SystemState.shared.myDeviceState.videoSourceDisplaying = .localAR
+                    SystemState.shared.myDeviceState.requestedImageFeedSources = []
                     if let config = arConfiguration {
                         arView.session.run(config)
                     }
                 }
             }
-        }
+            Channels.shared.reportDeviceStatusToOnboardDevice()
+        //}
         
     }
     
@@ -110,16 +111,24 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
      }
      */
     
+    
+    
+    
     func setupImageHandlerFromSourceDevice(_ sourceDevice: SourceDevice) {
         
-        let handler: Channels.ImageHandler = {  [self]  sourceDevice, imageData in
-            videoStreamView.image = UIImage(data: imageData)!
+        let handler: Channels.Handler<Any> = { sourceDevice, imageData in
+            if let id = imageData as? Data {
+                if let image = UIImage(data: id) {
+                    self.videoStreamView.image = image
+                } else {
+                    logError("Recieved nil image")
+                }
+            }
         }
-        channels.setImageHandler(handler, forDevice: sourceDevice)
-        
+        channels.setHandler(handler, forContentType: .image, forDevice: sourceDevice)
         
     }
-    
+
     /* Back from using EC for collaboration
      func setupCollaborators() {
      
@@ -177,7 +186,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
         let controller = controllerDevices
         
-        var commandHandler: Channels.CommandHandler = {_,_ in }
+        var commandHandler: Channels.Handler<Any> = {_,_ in }
         
         switch deviceRole {
             
@@ -187,6 +196,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         case .controller:
             
             channels.setupConsumerOfServerDevice(onboardDevice)
+            
             setupImageHandlerFromSourceDevice(onboardDevice)
             /*
              let tapGesture = UITapGestureRecognizer(target: self, action: #selector(travelToPoint(_:)))
@@ -228,20 +238,25 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             gameController.setupAsRemoteServer()
             setupLocalGameControllerHandlers()
             gameController.discoverGameController()
+
             
-            commandHandler = {  [self]  sourceDevice, commandObject in
+            
+            commandHandler = {  [self]  sourceDevice, co in
                 
-                self.runCommonCommandHandler(sourceDevice: sourceDevice, commandObject: commandObject)
-                
-                switch commandObject.type {
+                if let commandObject = co as? Channels.Command {
                     
-                case .broadcastSessionID:
-                    print("Received session ID: \(commandObject.stringValue) from \(sourceDevice)")
-                    connectedSourceDevicesSessionIDs[commandObject.stringValue] = sourceDevice
+                    self.runCommonCommandHandler(sourceDevice: sourceDevice, commandObject: commandObject)
                     
-                    
-                default:
-                    print("Unhandled command: \(commandObject)")
+                    switch commandObject.type {
+                        
+                    case .broadcastSessionID:
+                        print("Received session ID: \(commandObject.stringValue) from \(sourceDevice)")
+                        connectedSourceDevicesSessionIDs[commandObject.stringValue] = sourceDevice
+                        
+                        
+                    default:
+                        print("Unhandled command: \(commandObject)")
+                    }
                 }
             }
             
@@ -265,24 +280,32 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                 //imageView.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
             ])
             
-            commandHandler = {  [self]  sourceDevice, commandObject in
+            
+            commandHandler = {  [self]  sourceDevice, co in
                 
-                self.runCommonCommandHandler(sourceDevice: sourceDevice, commandObject: commandObject)
-                
-                switch commandObject.type {
+                if let commandObject = co as? Channels.Command {
                     
-                case .broadcastSessionID:
-                    print("Received session ID: \(commandObject.stringValue) from \(sourceDevice)")
-                    connectedSourceDevicesSessionIDs[commandObject.stringValue] = sourceDevice
+                    self.runCommonCommandHandler(sourceDevice: sourceDevice, commandObject: commandObject)
                     
-                default:
-                    print("Unhandled command: \(commandObject)")
+                    switch commandObject.type {
+                        
+                    case .broadcastSessionID:
+                        print("Received session ID: \(commandObject.stringValue) from \(sourceDevice)")
+                        connectedSourceDevicesSessionIDs[commandObject.stringValue] = sourceDevice
+                        
+                    default:
+                        print("Unhandled command: \(commandObject)")
+                    }
                 }
             }
             
             
             initDeviceStatusView()
             initCommandButtonsViews()
+            setupImageHandlerFromSourceDevice(onboardDevice)
+            SystemState.shared.myDeviceState.requestedImageFeedSources = [.iPadPro12]
+            Channels.shared.reportDeviceStatusToOnboardDevice()
+            toggleVideoSourceDisplaying()
             
             //imageView.autoresizingMask = [.flexibleRightMargin, .flexibleBottomMargin]
             //imageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
@@ -294,47 +317,52 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             RoverMotors.shared.accelerationCurve = 0.2
             resetPanTilt()
             
-            channels.beginScreenshotPolling()
+            // channels.beginScreenshotPolling()
             //channels.setupConsumerOfServerDevice(.iPadPro12)
             //gameController.setupAsConsumerFrom(sourceDevice: tripodDevice)
             
             
-            commandHandler = {  [self]  sourceDevice, commandObject in
+            commandHandler = {  [self]  sourceDevice, co in
                 
-                self.runCommonCommandHandler(sourceDevice: sourceDevice, commandObject: commandObject)
-                
-                switch commandObject.type {
+                if let commandObject = co as? Channels.Command {
                     
-                case Channels.CommandType.buildArena:
-                    logDebug("Recived command to build arena")
+                    self.runCommonCommandHandler(sourceDevice: sourceDevice, commandObject: commandObject)
                     
-                    self.buildArenaOnScreenPoint(getPointForArena())
-                    self.addRoverEntity()
-                    
-                case Channels.CommandType.cancelTransitToPoint:
-                    logDebug("Recived command to cancel transit")
-                    self.continueTravelToPoint = false
-                    
-                case Channels.CommandType.imagefeedRequest:
-                    logDebug("Recived command to enable/disable display feed: \(commandObject.boolValue)")
-                    channels.worldState.devicesState[sourceDevice]?.imageDisplayEnabled = commandObject.boolValue
-                    
-                case Channels.CommandType.beginTransitToPoint:
-                    logDebug("Recived command to begin transit")
-                    let destinationPoint = commandObject.pointValue
-                    travelToPoint(destinationPoint, atSpeed: commandObject.floatValue)
-                    
-                case .broadcastSessionID:
-                    print("Received session ID: \(commandObject.stringValue) from \(sourceDevice)")
-                    connectedSourceDevicesSessionIDs[commandObject.stringValue] = sourceDevice
-                    
-                case .deviceStatusUpdate:
-                    let deviceState = try! jsonDecoder.decode(Channels.DeviceState.self, from: commandObject.dataValue)
-                    channels.worldState.devicesState[sourceDevice] = deviceState
-                    channels.broadcastWorldState()
-                    
-                default:
-                    print("Unhandled command: \(commandObject)")
+                    switch commandObject.type {
+                        
+                    case Channels.CommandType.buildArena:
+                        logDebug("Recived command to build arena")
+                        
+                        self.buildArenaOnScreenPoint(getPointForArena())
+                        self.addRoverEntity()
+                        
+                    case Channels.CommandType.cancelTransitToPoint:
+                        logDebug("Recived command to cancel transit")
+                        self.continueTravelToPoint = false
+                        
+                        /*
+                    case Channels.CommandType.imagefeedRequest:
+                        logDebug("Recived command to enable/disable display feed: \(commandObject.boolValue)")
+                        SystemState.shared.worldState.devicesState[sourceDevice]?.imageDisplayEnabled = commandObject.boolValue
+                        */
+                    case Channels.CommandType.beginTransitToPoint:
+                        logDebug("Recived command to begin transit")
+                        let destinationPoint = commandObject.pointValue
+                        travelToPoint(destinationPoint, atSpeed: commandObject.floatValue)
+                        
+                    case .broadcastSessionID:
+                        print("Received session ID: \(commandObject.stringValue) from \(sourceDevice)")
+                        connectedSourceDevicesSessionIDs[commandObject.stringValue] = sourceDevice
+                        
+                        /*
+                    case .deviceStatusUpdate:
+                        let deviceState = try! jsonDecoder.decode(Channels.DeviceState.self, from: commandObject.dataValue)
+                        channels.worldState.devicesState[sourceDevice] = deviceState
+                        channels.broadcastWorldState()
+                        */
+                    default:
+                        print("Unhandled command: \(commandObject)")
+                    }
                 }
             }
             
@@ -361,34 +389,32 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
         for device in Common.deviceSet {
             if device != Common.getHostDevice() {
-                channels.setCommandHandler(commandHandler, forDevice: device)
+                channels.setHandler(commandHandler, forContentType: .command, forDevice: device)
             }
         }
         
         
         sleep(1)
-        
-        
-        sleep(1)
-        
+
         
     }
     
     
     func runCommonCommandHandler(sourceDevice: SourceDevice, commandObject: Channels.Command) {
         
+        /*
         switch commandObject.type {
             
         case .worldStatusUpdate:
             
             if Common.getHostDevice() != onboardDevice {
-                channels.worldState  = try! jsonDecoder.decode(Channels.WorldState.self, from: commandObject.dataValue)
+                channels.globalState  = try! jsonDecoder.decode(System.GlobalState.self, from: commandObject.dataValue)
             }
             
         default:
             print("Ignored cases")
         }
-        
+        */
     }
     
     
@@ -1127,7 +1153,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     var systemFPSMonitorTimer = Date()
     var systemFPSMonitorCount = 0.0
     
-    let statusMapping: [ARFrame.WorldMappingStatus: Channels.WorldMappingStatus] = [.notAvailable: .notAvailable, .limited: .limited, .extending: .extending, .mapped: .mapped]
+    let statusMapping: [ARFrame.WorldMappingStatus: SystemState.WorldMappingStatus] = [.notAvailable: .notAvailable, .limited: .limited, .extending: .extending, .mapped: .mapped]
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         
         systemFPSMonitorCount += 1
@@ -1139,9 +1165,9 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
         
         let timePerFrame = 1.0 / Double(channels.imageProcessingFPS)
-
+        
         //channels.localDeviceState.worldMappingStatus = frame.worldMappingStatus.rawValue
-        channels.localDeviceState.worldMappingStatus = statusMapping[frame.worldMappingStatus]!
+        SystemState.shared.myDeviceState.worldMappingStatus = statusMapping[frame.worldMappingStatus]!
         if Common.getHostDevice() != onboardDevice {
             channels.broadcastWorldState()
         }
@@ -1158,7 +1184,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
          print("worldMappingStatus: Mapped")
          }
          */
-
+        
         
         currentCameraPosition = CGPointMake(CGFloat(arView.cameraTransform.translation.x), CGFloat(arView.cameraTransform.translation.y))
         // print("Camera: x: \(arView.cameraTransform.translation.x), z: \(arView.cameraTransform.translation.x)")
@@ -1189,65 +1215,57 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
         let destinationPoint = self.translationFromScreenPoint(point: CGPoint(x: self.arView.bounds.height * 0.50, y: self.arView.bounds.width * 0.50))
         coordinates.text = "(\(String(format: "%.2f", destinationPoint.x)), \(String(format: "%.2f", destinationPoint.y)))"
-    
+        
         lastTrackingState = frame.camera.trackingState
-
+        
         // 30 fps: 0.33333
         // Required time interval: 0.03333
         // seconds
-
+        
         let currentTransmissionTime = CACurrentMediaTime()
         let deltaTime = currentTransmissionTime - lastTransimittedImageTime
         lastTransimittedImageTime = currentTransmissionTime
-
+        
         // Add elapsed time to accumulated time
         accumulatedTransmissionTime += deltaTime
-
+        
         // Process frames according to target fps
         if accumulatedTransmissionTime >= timePerFrame {
-
+            
             // Subtract time for processed frame from accumulated time
             accumulatedTransmissionTime -= timePerFrame
             
-        //let requiredTimeInterval = (1 / channels.imageProcessingFPS)
-        //if abs(fpsTimer.timeIntervalSinceNow) > requiredTimeInterval {
-
+            //let requiredTimeInterval = (1 / channels.imageProcessingFPS)
+            //if abs(fpsTimer.timeIntervalSinceNow) > requiredTimeInterval {
+            
             //fpsTimer = Date()
             
             debugFrameCount += 1
             if abs(debugTestTime.timeIntervalSinceNow) > 10 {
-                print("Debug frames processes per sec: \(debugFrameCount / 10)")
+                //print("Debug frames processes per sec: \(debugFrameCount / 10)")
                 debugFrameCount = 0
                 debugTestTime = Date()
             }
             
-            if Common.getHostDevice() == onboardDevice {
-                
-                //let interval = abs(timer.timeIntervalSinceNow)
-                let scaleFactor = 0.25
-                
-                if channels.imageFeedRequired == true {
-                    //if abs(self.timer.timeIntervalSinceNow) > 1 / channels.imageProcessingFPS {
-                    //DispatchQueue.main.async { [self] in
-                    arView.snapshot(saveToHDR: false) { [self] image in
-                        
-                        if let i = image {
-                            
-                            if let scaledImage = UIImage.scale(image: i, by: scaleFactor) {
-                                //let resizedImage = UIImage.resize(image: i, targetSize: CGSize(width: 250, height: 125))
-                                
-                                if let imageData = scaledImage.jpegData(compressionQuality: 0.0) {
-                                    channels.sendImageData(imageData, toDevice: .iPhone14ProMax)
-                                    //print("Sending new image: \(imageData.count)")
+            let scaleFactor = 0.25
+            let devicesRequiringImageFeed = SystemState.shared.devicesRequiringImageFeed()
+            if devicesRequiringImageFeed.count > 0 {
+                arView.snapshot(saveToHDR: false) { [self] image in
+                    if let i = image {
+                        if let scaledImage = UIImage.scale(image: i, by: scaleFactor) {
+                            if let imageData = scaledImage.jpegData(compressionQuality: 0.0) {
+                                for sourceDevice in devicesRequiringImageFeed {
+                                    channels.sendContentTypeToSourceDevice(sourceDevice, type: .image, data: imageData)
                                 }
                             }
                         }
                     }
-
                 }
-           }
+                
+            }
         }
     }
+
     
     
     /*

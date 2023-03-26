@@ -16,8 +16,8 @@ class Channels {
     
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
-
-
+    
+    
     public enum CommandType: Int16, Codable {
         
         case scanWorld
@@ -26,10 +26,9 @@ class Channels {
         case roverRotateDegrees
         case beginTransitToPoint
         case cancelTransitToPoint
-        case imagefeedRequest
         case broadcastSessionID
         case worldStatusUpdate
-        case deviceStatusUpdate
+        
     }
     
     struct Command: Codable {
@@ -41,7 +40,7 @@ class Channels {
         var boolValue = false
         var dataValue = Data()
         //var simd4String = ""
-
+        
         init(type: CommandType, floatValue: Float, pointValue: CGPoint, stringValue: String = "", boolValue: Bool, dataValue: Data) {
             self.type = type
             self.floatValue = floatValue
@@ -52,17 +51,23 @@ class Channels {
         }
         
     }
-
+    
     public typealias DeviceConnectedHandler = (SourceDevice) -> Void
-    public typealias CommandHandler = (SourceDevice, Command) -> Void
-    public typealias ImageHandler = (SourceDevice, Data) -> Void
-    public typealias StateHandler = (SourceDevice, Data) -> Void
-    public typealias CollaborationHandler = (SourceDevice, Data) -> Void
-
+    //public typealias CommandHandler = (SourceDevice, Command) -> Void
+    
+    public typealias Handler<T> = (SourceDevice, T) -> Void
+    
     let eid_command: Int8 = 1
     let eid_image: Int8 = 2
     let eid_state: Int8 = 3
     let eid_collaboration: Int8 = 4
+    
+    enum ContentType: Int8, CaseIterable {
+        case command = 1
+        case image = 2
+        case state = 3
+        case collaboration = 4
+    }
     
     var consumerIdentity = ""
     
@@ -72,35 +77,15 @@ class Channels {
     var consumerDevices: [SourceDevice: Device] = [:]
     var serverDevices: [SourceDevice: ServerDevice] = [:]
     
-    enum ContentType {
-        case command
-        case image
-        case state
-        case collaboration
-    }
-    
-    var elementsConsumer: [ContentType: [SourceDevice: Element]]?
-    var elementsServer: [ContentType: [SourceDevice: Element]]?
-    
-    var consumerCommandElements: [SourceDevice: Element] = [:]
-    var serverCommandElements: [SourceDevice: Element] = [:]
-    
-    var consumerImageElements: [SourceDevice: Element] = [:]
-    var serverImageElements: [SourceDevice: Element] = [:]
-    
-    var consumerStateElements: [SourceDevice: Element] = [:]
-    var serverStateElements: [SourceDevice: Element] = [:]
-    
-    var consumerCollaborationElements: [SourceDevice: Element] = [:]
-    var serverCollaborationElements: [SourceDevice: Element] = [:]
+    var consumerElements = [ContentType: Element]()
+    var serverElements = [ContentType: Element]()
     
     var deviceConnectedHandler: DeviceConnectedHandler?
-    var commandHandlers: [SourceDevice: CommandHandler] = [:]
-    var imageHandlers: [SourceDevice: ImageHandler] = [:]
-    var stateHandlers: [SourceDevice: StateHandler] = [:]
-    var collaborationHandlers: [SourceDevice: CollaborationHandler] = [:]
+    
+    var handlers: [ContentType: Handler<Any>] = [:]
     
     var controllerDevices: Set<SourceDevice>?
+    
     var imagePollingActive = false
     var imageProcessingEnabled = false
     var currentScreenImage = UIImage() {
@@ -110,24 +95,28 @@ class Channels {
     }
     var imageProcessingFPS: Double = 45
     var imageAlreadySent = true // false will break this
-
+    
+    init() {
+        
+        /*
+        // Avoids issues with unwrapping
+        for contentType in ContentType.allCases {
+            for sourceDevice in SourceDevice.allCases {
+                serverElements[contentType] = [sourceDevice: Element()]
+                consumerElements[contentType] = [sourceDevice: Element()]
+            }
+        }
+        */
+    }
+    
     // Broadcast the state of the world to all consumer devices
     func broadcastWorldState() {
-        let worldStateJSON = try! jsonEncoder.encode(SystemState.shared.worldState)
+        let globalStateJSON = try! jsonEncoder.encode(SystemState.shared.globalState)
         for device in consumerDevices.keys {
-            sendCommand(type: .worldStatusUpdate, floatValue: 0.0, pointValue: CGPointZero, stringValue: "", boolValue: false, dataValue: worldStateJSON, toDevice: device)
+            sendCommand(type: .worldStatusUpdate, floatValue: 0.0, pointValue: CGPointZero, stringValue: "", boolValue: false, dataValue: globalStateJSON, toDevice: device)
         }
     }
     
-    public func sendStateDataToAllClientDevices(_ imageData:Data) {
-        
-        for sourceDevice in consumerDevices.keys {
-            if sourceDevice != Common.getHostDevice() {
-                sendStateData(imageData, toDevice: sourceDevice)
-            }
-        }
-        
-    }
     
     func deviceConnected(device: Device) {
         
@@ -149,38 +138,132 @@ class Channels {
         
     }
     
-    public func setCommandHandler(_ handler: @escaping CommandHandler, forDevice: SourceDevice) {
-        
-        commandHandlers[forDevice] = handler
-        
-    }
-    
-    public func setImageHandler(_ handler: @escaping ImageHandler, forDevice: SourceDevice) {
-        
-        imageHandlers[forDevice] = handler
+    /*
+     public func setCommandHandler(_ handler: @escaping CommandHandler, forDevice: SourceDevice) {
+     
+     commandHandlers[forDevice] = handler
+     
+     }
+     */
+    public func setHandler(_ handler: @escaping Handler<Any>, forContentType: ContentType, forDevice: SourceDevice) {
+        logDebug("Setting handler for content type \(forContentType) for device \(forDevice)")
+        handlers[forContentType] = handler
 
     }
+    /*
+     private func processDataFromDevice(_ device: SourceDevice, type: ContentType, element: Element) {
+     
+     guard let h = handlers[device] else { return }
+     
+     if let data = element.dataValue {
+     if let command = try? jsonDecoder.decode(Command.self, from: data) {
+     h(device, command)
+     }
+     }
+     }
+     */
     
-    public func setStateHandler(_ handler: @escaping StateHandler, forDevice: SourceDevice) {
-        
-        stateHandlers[forDevice] = handler
-
-    }
-    
-    public func setCollaborationHandler(_ handler: @escaping CollaborationHandler, forDevice: SourceDevice) {
-        
-        collaborationHandlers[forDevice] = handler
-
-    }
-    
-    private func processCommandFromDevice(_ device: SourceDevice, element: Element) {
-        
-        guard let h = commandHandlers[device] else { return }
-        
-        if let data = element.dataValue {
-            if let command = try? jsonDecoder.decode(Command.self, from: data) {
-                h(device, command)
+    /* With return value...
+    private func executeHandler<T: Decodable>(sourceDevice: SourceDevice, contentType: ContentType, dataType: T.Type, element: Element) -> T? {
+        logDebug("Executing handler for content type \(contentType) for device \(sourceDevice)")
+        if let contentTypeHandlers = handlers[contentType] {
+            if let h = contentTypeHandlers[sourceDevice] {
+                if let data = element.dataValue {
+                    let decodedObject = try! jsonDecoder.decode(dataType.self, from: data)
+                    h(sourceDevice, decodedObject)
+                    return decodedObject
+                }
             }
+        }
+        return nil
+    }
+    */
+
+    private func executeHandler<T: Decodable>(sourceDevice: SourceDevice, contentType: ContentType, dataType: T.Type, element: Element) {
+        if contentType != .image { logDebug("Executing handler for content type \(contentType) for device \(sourceDevice)") }
+        if let handler = handlers[contentType] {
+                if let data = element.dataValue {
+                    if dataType == Data.self {
+                        handler(sourceDevice, data)
+                    } else {
+                        let decodedObject = try! jsonDecoder.decode(dataType.self, from: data)
+                        handler(sourceDevice, decodedObject)
+                    }
+                }
+        }
+    }
+    
+    func reportDeviceStatusToOnboardDevice() {
+        if Common.getHostDevice() != Common.shared.onboardDevice() {
+            logDebug("Reporting device state to onboard")
+            do {
+                //let encodedDeviceState = try self.jsonEncoder.encode(SystemState.shared.myDeviceState)
+                sendContentTypeToSourceDevice(Common.shared.onboardDevice(), type: ContentType.state, data: SystemState.shared.myDeviceState)
+            } catch {
+                logError("Recieved encoding error with DeviceState")
+            }
+        }
+        
+    }
+    
+    public func sendContentTypeToSourceDevice<T>(_ sourceDevice: SourceDevice, type: ContentType, data: T) where T : Encodable {
+        
+        if Common.getHostDevice() == Common.shared.onboardDevice() {
+            
+            if let device = consumerDevices[sourceDevice], let element = serverElements[type] {
+                sendUsingDevice(device, element)
+            }
+
+        } else {
+            if let device = serverDevices[sourceDevice], let element = consumerElements[type] {
+                sendUsingDevice(device, element)
+            }
+        }
+        
+      
+        func sendUsingDevice(_ device: Device, _ element: Element) {
+            
+                //print("Consumer elements for type \(type) is \(consumerElements)")
+
+                    //if let element = serverElements[sourceDevice] {
+                    do {
+                        if type != .image {
+                            let jsonData = try self.jsonEncoder.encode(data)
+                            element.dataValue = jsonData
+                        } else {
+                            element.dataValue = data as! Data
+                        }
+                        do {
+                            try device.send(element: element)
+                        } catch {
+                            logError("\(type) transmission failed to device: \(sourceDevice.rawValue)")
+                        }
+                    }
+                    catch {
+                        logError("JSON encoding error on element \(element.displayName)")
+                    }
+                    //}
+            
+        }
+        
+    }
+    //  as! T.Type
+    
+    func processObjectIncomingFromDevice(sourceDevice: SourceDevice, contentType: ContentType, element: Element) {
+        
+        if contentType != .image { logDebug("Processing incoming object from device \(sourceDevice) of content type \(contentType)") }
+        switch contentType {
+            
+        case .command:
+            executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: Command.self, element: element)
+        case .image:
+            executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: Data.self, element: element)
+            processImageFromDevice(sourceDevice, element: element)
+        case .state:
+            SystemState.shared.processIncomingDeviceState(data: element.dataValue)
+            executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: SystemState.DeviceState.self, element: element)
+        case .collaboration:
+            executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: Data.self, element: element)
         }
         
     }
@@ -188,116 +271,123 @@ class Channels {
     var startDate = Date()
     var imageCount = 0.0
     var timeInterval = 4.0
+    
     private func processImageFromDevice(_ device: SourceDevice, element: Element) {
         
-        guard let h = imageHandlers[device] else { return }
-        
-        imageCount += 1
-        let elapsed = abs(startDate.timeIntervalSinceNow)
-        if elapsed >= 4.0 {
-            let fps = imageCount / timeInterval
-            print("Received FPS: \(fps) - images: \(imageCount), elapsed: \(elapsed)")
-            startDate = Date()
-            imageCount = 0
-        }
-        
-        if let data = element.dataValue {
-            h(device, data)
-        }
-        
-    }
+        if let handler = handlers[.image] {
 
-    private func processCollaborationFromDevice(_ device: SourceDevice, element: Element) {
-        
-        guard let h = collaborationHandlers[device] else { return }
-        
-        if let data = element.dataValue {
-            h(device, data)
+            imageCount += 1
+            let elapsed = abs(startDate.timeIntervalSinceNow)
+            if elapsed >= 4.0 {
+                let fps = imageCount / timeInterval
+                print("Received FPS: \(fps) - images: \(imageCount), elapsed: \(elapsed)")
+                startDate = Date()
+                imageCount = 0
+            }
+            
+            if let data = element.dataValue {
+                handler(device, data)
+            }
         }
+
         
     }
-
-    func reportDeviceStatusToOnboardDevice() {
-        let deviceEncoded = try! jsonEncoder.encode(SystemState.shared.localDeviceState)
-        sendCommand(type: .deviceStatusUpdate, floatValue: 0.0, pointValue: CGPointZero, stringValue: "", boolValue: false, dataValue: deviceEncoded, toDevice: Common.shared.unwrappedDeviceType(.onboard))
-    }
+    
+    /*
+     private func processCollaborationFromDevice(_ device: SourceDevice, element: Element) {
+     
+     guard let h = collaborationHandlers[device] else { return }
+     
+     if let data = element.dataValue {
+     h(device, data)
+     }
+     
+     }
+     */
+    
     
     func annonceSessionID(_ sessionID: String) {
-        if var myState = SystemState.shared.worldState.myState {
-            myState.sessionIdentifier = sessionID
-            print("Accouncing session ID broadcast from \(Common.getHostDevice())")
-            reportDeviceStatusToOnboardDevice()
-            //sendCommand(type: .broadcastSessionID, floatValue: 0.0, pointValue: CGPointZero, stringValue: sessionID, boolValue: false, dataValue: Data(), toDevice: Common.shared.unwrappedDeviceType(.onboard))
-        }
+        SystemState.shared.myDeviceState.sessionIdentifier = sessionID
+        reportDeviceStatusToOnboardDevice()
     }
     
-    public func setupConsumerOfServerDevice(_ serviceDevice: SourceDevice) {
-
-        let elementalController = ElementalController()
-        consumerControllers[serviceDevice] = elementalController
+    public func setupConsumerOfServerDevice(_ sourceDevice: SourceDevice) {
         
-        let serviceName = Common.serviceNameFor(sourceDevice: serviceDevice, serviceTypeName: "Channel")
+        let elementalController = ElementalController()
+        consumerControllers[sourceDevice] = elementalController
+        
+        let serviceName = Common.serviceNameFor(sourceDevice: sourceDevice, serviceTypeName: "Channel")
         
         let deviceNamed = Common.sourceDeviceFromHostName().rawValue
-
-        print("Setting up \(Common.getHostDevice().rawValue) as consumer of \(serviceDevice.rawValue), service name: \(serviceName), deviceNamed: \(deviceNamed)")
+        
+        print("Setting up \(Common.getHostDevice().rawValue) as consumer of \(sourceDevice.rawValue), service name: \(serviceName), deviceNamed: \(deviceNamed)")
         
         elementalController.setupForBrowsingAs(deviceNamed: Common.sourceDeviceFromHostName().rawValue)
         
         elementalController.browser.events.foundServer.handler { device in
             
-            self.serverDevices[serviceDevice] = device
+            self.serverDevices[sourceDevice] = (device as! ServerDevice)
             
             device.events.deviceDisconnected.handler = { _ in
-                self.serverDevices[serviceDevice] = nil
+                self.serverDevices[sourceDevice] = nil
                 logAlert("\(self.consumerIdentity) disconnected from \(serviceName)")
                 sleep(2) // Be careful about browing too soon because we may pick up the ghost of the previous service
                 elementalController.browser.browseFor(serviceName: serviceName)
             }
             
-            self.consumerCommandElements[serviceDevice] = device.attachElement(Element(identifier: self.eid_command, displayName: "Command", proto: .tcp, dataType: .Data))
-            self.consumerImageElements[serviceDevice] = device.attachElement(Element(identifier: self.eid_image, displayName: "Image", proto: .tcp, dataType: .Data))
-            self.consumerStateElements[serviceDevice] = device.attachElement(Element(identifier: self.eid_state, displayName: "State", proto: .tcp, dataType: .Data))
-            self.consumerCollaborationElements[serviceDevice] = device.attachElement(Element(identifier: self.eid_collaboration, displayName: "Collaboration", proto: .tcp, dataType: .Data))
-            
-            var gameControllerElements = [
-                ]
+            device.events.connected.handler = { [self] (device) in
+                
+                for contentType in ContentType.allCases {
+                    let element = device.attachElement(Element(identifier: contentType.rawValue, displayName: "Content Type id #\(contentType)", proto: .tcp, dataType: .Data))
 
-            self.consumerCollaborationElements[serviceDevice]?.handler = { element, device in
+                    
+                    element.handler = { element, device in
+                        
+                        if let contentType = ContentType(rawValue: element.identifier) {
+                            self.processObjectIncomingFromDevice(sourceDevice: sourceDevice, contentType: contentType, element: element)
+                        } else {
+                            fatalError("Could not handle content type")
+                        }
+                    }
+                    
+                    self.consumerElements[contentType] = element
+                    
+                    Channels.shared.reportDeviceStatusToOnboardDevice()
+                    
+                    /*
+                     if let elements = self.elementsConsumer[contentType] {
+                     let element = device.attachElement(Element(identifier: contentType.rawValue, displayName: "Content Type id #\(contentType)", proto: .tcp, dataType: .Data))
+                     /*
+                      element.handler = {
+                      print("Handler for consumer element goes here")
+                      }
+                      elements[serviceDevice] = element
+                      */
+                     }
+                     */
+                    
+                }
                 
-                let device = Common.sourceDeviceFromString(deviceName: device.displayName)
-                self.processCollaborationFromDevice(device, element: element)
-                
+                /*
+                 self.consumerImageElements[serviceDevice]?.handler = { element, device in
+                 
+                 let device = Common.sourceDeviceFromString(deviceName: device.displayName)
+                 self.processImageFromDevice(device, element: element)
+                 }
+                 */
             }
             
-            self.consumerImageElements[serviceDevice]?.handler = { element, device in
-                
-                let device = Common.sourceDeviceFromString(deviceName: device.displayName)
-                self.processImageFromDevice(device, element: element)
-                
-            }
-            
-            /*
-            device.events.connected.handler = { [self] device in
-                
-                self.serverDevices[serviceDevice] = device as? ServerDevice
-                
-                logAlert("\(Common.getHostDevice()) client connected to server \(device.displayName) on service \(serviceName)")
-                
-            }
-            */
             device.connect()
-            
         }
         
         elementalController.browser.browseFor(serviceName: serviceName)
         
+        
     }
-
-
+    
     public func setupAsServer() {
         
-
+        
         let thisDevice = Common.getHostDevice()
         
         let serviceName = Common.serviceNameFor(sourceDevice: thisDevice, serviceTypeName: "Channel")
@@ -327,195 +417,169 @@ class Channels {
             
             self.consumerDevices[sourceDevice] = clientDevice
             
-            self.serverCommandElements[sourceDevice] = clientDevice.attachElement(Element(identifier: self.eid_command, displayName: "Command", proto: .tcp, dataType: .Data))
-            self.serverImageElements[sourceDevice] = clientDevice.attachElement(Element(identifier: self.eid_image, displayName: "Image", proto: .tcp, dataType: .Data))
-            self.serverStateElements[sourceDevice] = clientDevice.attachElement(Element(identifier: self.eid_state, displayName: "Image", proto: .tcp, dataType: .Data))
-            self.serverCollaborationElements[sourceDevice] = clientDevice.attachElement(Element(identifier: self.eid_collaboration, displayName: "Collaboration", proto: .tcp, dataType: .Data))
-      
-            self.serverCommandElements[sourceDevice]?.handler = { element, device in
+            for contentType in ContentType.allCases {
                 
-                let device = Common.sourceDeviceFromString(deviceName: device.displayName)
-                self.processCommandFromDevice(device, element: element)
-                
+                let element = device.attachElement(Element(identifier: contentType.rawValue, displayName: "Content Type id #\(contentType)", proto: .tcp, dataType: .Data))
+                element.handler = { element, device in
+                    
+                    if let contentType = ContentType(rawValue: element.identifier) {
+                        self.processObjectIncomingFromDevice(sourceDevice: sourceDevice, contentType: contentType, element: element)
+                    } else {
+                        fatalError("Could not handle content type")
+                    }
+                }
+                self.serverElements[contentType] = element
             }
             
-            self.deviceConnected(device: device)
+            self.deviceConnected(device: clientDevice)
             
         }
         
         do {
             try serverController.service.publish(onPort: 0)
-
+            
         } catch {
             logDebug("\(serviceName) could not publish: \(error)")
         }
         
     }
     
-    public func beginScreenshotPolling() {
+    
+    public func sendContentTypeDataToAllClientDevices(_ type: ContentType, data: Data) {
         
-        imageProcessingEnabled = true
-        
-        if imagePollingActive { return }
-        imagePollingActive = true
-        let backgroundQueue = DispatchQueue(label: "com.example.app.backgroundQueue", qos: .background)
-        
-        //let queue = DispatchQueue(label: "com.example.app.imageProcessing", qos: .background, attributes: .concurrent, autoreleaseFrequency: .workItem, target: nil)
-        // let semaphore = DispatchSemaphore(value: 3)
-        
-        
-        print("Started image polling")
-        
-        //semaphore.wait()
-        
-        var startDate = Date()
-        var imageCount: Double = 0.0
-        var samplingImageCount: Double = 180.0
-        
-        backgroundQueue.async { [self] in
-            
-
-            while self.imageProcessingEnabled {
-                
-                autoreleasepool {
-                    //if let unwrappedImage = image {
-                    //defer { semaphore.signal() }
-                    var cachedImageData: Data?
-                    if !self.imageAlreadySent {
-                        for device in self.controllerDevices! {
-                            if device != Common.getHostDevice() {
-                                if let deviceState = SystemState.shared.worldState.devicesState[device] {
-                                    if deviceState.imageDisplayEnabled {
-                                        if let i = cachedImageData {
-                                            self.sendImageData(i, toDevice: device)
-                                            //print("Sending cached image")
-                                        } else {
-                                            if let imageData = self.currentScreenImage.jpegData(compressionQuality: 0.3) {
-                                                cachedImageData = imageData
-                                                self.sendImageData(imageData, toDevice: device)
-                                                //print("Sending new image")
-                                            }
-                                        }
-                                    }
-                                    
-                                }
-                            }
-                            
-                        }
-                        //print("Clearing cache")
-                        cachedImageData = Data()
-                        
-                    }
-                    imageAlreadySent = true
-                    usleep(10000)
-                    
-                }
-            }
-            self.imagePollingActive = false
+        for sourceDevice in consumerDevices.keys {
+            sendContentTypeToSourceDevice(sourceDevice, type: type, data: data)
         }
-    }
         
-        /*
-         /*
-         //if let imageData = self.currentScreenImage.pngData() {
-             
-             //print("Image data size: \(imageData.count)")
-             //self.channels.sendImageDataToAllClientDevices(imageData)
-
-                             imageCount += 1
-                             if imageCount > samplingImageCount {
-                                 let elapsedSeconds = abs(startDate.timeIntervalSinceNow)
-                                 // 3 seconds, 60 fps, imagecount = 180
-                                 print("FPS: \(imageCount / elapsedSeconds)")
-                                 startDate = Date()
-                                 imageCount = 0
-                             }
-                         }
-                     }
-                 }
-             }
-          */
-
-         //}
-         //usleep(10000)
-         //let sleepTime = Float((1 / self.imageProcessingFPS) * 1000000)
-         //usleep(useconds_t(sleepTime))
+    }
+    
+    
+    
+    /*
+     public func beginScreenshotPolling() {
+     
+     imageProcessingEnabled = true
+     
+     if imagePollingActive { return }
+     imagePollingActive = true
+     let backgroundQueue = DispatchQueue(label: "com.example.app.backgroundQueue", qos: .background)
+     
+     //let queue = DispatchQueue(label: "com.example.app.imageProcessing", qos: .background, attributes: .concurrent, autoreleaseFrequency: .workItem, target: nil)
+     // let semaphore = DispatchSemaphore(value: 3)
+     
+     
+     print("Started image polling")
+     
+     //semaphore.wait()
+     
+     var startDate = Date()
+     var imageCount: Double = 0.0
+     var samplingImageCount: Double = 180.0
+     
+     backgroundQueue.async { [self] in
+     
+     
+     while self.imageProcessingEnabled {
+     
+     autoreleasepool {
+     //if let unwrappedImage = image {
+     //defer { semaphore.signal() }
+     var cachedImageData: Data?
+     if !self.imageAlreadySent {
+     for device in self.controllerDevices! {
+     if device != Common.getHostDevice() {
+     if let deviceState = SystemState.shared.worldState.devicesState[device] {
+     if deviceState.imageDisplayEnabled {
+     if let i = cachedImageData {
+     self.sendImageData(i, toDevice: device)
+     //print("Sending cached image")
+     } else {
+     if let imageData = self.currentScreenImage.jpegData(compressionQuality: 0.3) {
+     cachedImageData = imageData
+     self.sendImageData(imageData, toDevice: device)
+     //print("Sending new image")
      }
-         */
+     }
+     }
+     
+     }
+     }
+     
+     }
+     //print("Clearing cache")
+     cachedImageData = Data()
+     
+     }
+     imageAlreadySent = true
+     usleep(10000)
+     
+     }
+     }
+     self.imagePollingActive = false
+     }
+     }
+     */
     
-    public func sendImageDataToAllClientDevices(_ imageData:Data) {
-        
-        for sourceDevice in consumerDevices.keys {
-            sendImageData(imageData, toDevice: sourceDevice)
-        }
-        
-    }
-    
-    public func sendImageData(_ imageData: Data, toDevice: SourceDevice) {
-
-        if let device = consumerDevices[toDevice] {
-            
-            if let element = serverImageElements[toDevice] {
-                element.dataValue = imageData
-                do {
-                    try device.send(element: element)
-                    
-                } catch {
-                    logError("Image transmission failed to device: \(toDevice.rawValue)")
-                }
-            }
-            
-        }
-    }
-    
-    public func sendStateData(_ stateData: Data, toDevice: SourceDevice) {
-
-        if let device = consumerDevices[toDevice] {
-            
-            if let element = serverStateElements[toDevice] {
-                element.dataValue = stateData
-                do {
-                    try device.send(element: element)
-                    
-                } catch {
-                    logError("State transmission failed to device: \(toDevice.rawValue)")
-                }
-            }
-            
-        }
-    }
-    
-    public func sendCollaborationData(_ collaborationData: Data) {
-
-       // print("about to send collaboration data")
-        for sourceDevice in consumerDevices.keys {
-
-            if sourceDevice != Common.getHostDevice() {
-
-                if let device = consumerDevices[sourceDevice] {
-                    
-                    if let element = serverCollaborationElements[sourceDevice] {
-                        element.dataValue = collaborationData
-                        do {
-                            //print("Sending collaboration data from \(Common.getHostDevice())to: \(sourceDevice.rawValue), using element \(element.displayName)")
-                            try device.send(element: element)
-                        } catch {
-                            logError("Collaboration transmission failed to device: \(sourceDevice.rawValue)")
-                        }
-                    }
-                    
-                }
-            }
-        }
-    }
-    
+    /*
+     /*
+      //if let imageData = self.currentScreenImage.pngData() {
+      
+      //print("Image data size: \(imageData.count)")
+      //self.channels.sendImageDataToAllClientDevices(imageData)
+      
+      imageCount += 1
+      if imageCount > samplingImageCount {
+      let elapsedSeconds = abs(startDate.timeIntervalSinceNow)
+      // 3 seconds, 60 fps, imagecount = 180
+      print("FPS: \(imageCount / elapsedSeconds)")
+      startDate = Date()
+      imageCount = 0
+      }
+      }
+      }
+      }
+      }
+      */
+     
+     //}
+     //usleep(10000)
+     //let sleepTime = Float((1 / self.imageProcessingFPS) * 1000000)
+     //usleep(useconds_t(sleepTime))
+     }
+     */
+ 
+    /*
+     public func sendCollaborationData(_ collaborationData: Data) {
+     
+     // print("about to send collaboration data")
+     for sourceDevice in consumerDevices.keys {
+     
+     if sourceDevice != Common.getHostDevice() {
+     
+     if let device = consumerDevices[sourceDevice] {
+     
+     if let element = serverCollaborationElements[sourceDevice] {
+     element.dataValue = collaborationData
+     do {
+     //print("Sending collaboration data from \(Common.getHostDevice())to: \(sourceDevice.rawValue), using element \(element.displayName)")
+     try device.send(element: element)
+     } catch {
+     logError("Collaboration transmission failed to device: \(sourceDevice.rawValue)")
+     }
+     }
+     
+     }
+     }
+     }
+     }
+     */
     struct MatrixData: Encodable {
         let matrix: simd_float4x4
-
+        
         enum CodingKeys: String, CodingKey {
             case matrix
         }
-
+        
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode([
@@ -526,39 +590,40 @@ class Channels {
             ], forKey: .matrix)
         }
     }
-      
+    
     public func sendCommand(type: CommandType, floatValue: Float, pointValue: CGPoint, stringValue: String, boolValue: Bool, dataValue: Data, toDevice: SourceDevice) {
         
         if let device = serverDevices[toDevice] {
             
-            if let element = consumerCommandElements[toDevice] {
-                let command = Command(type: type, floatValue: floatValue, pointValue: pointValue, stringValue: stringValue, boolValue: boolValue, dataValue: dataValue)
-                 
-                /*
-                let matrixData = MatrixData(matrix: transform)
-                let jsonData = try! JSONEncoder().encode(matrixData)
-                let simd4String = String(data: jsonData, encoding: .utf8)!
-
-                 */
-
-                //let command = Command(type: type, floatValue: floatValue, pointValue: pointValue, simd4String: simd4String
-                let jsonCommand = try! jsonEncoder.encode(command)
-                element.dataValue = jsonCommand
-                 
-                
-                do {
-                    try device.send(element: element)
+            //if let elementsForType = consumerElements[.command] {
+                if let element = consumerElements[.command] {
+                    let command = Command(type: type, floatValue: floatValue, pointValue: pointValue, stringValue: stringValue, boolValue: boolValue, dataValue: dataValue)
                     
-                } catch {
-                    logError("Command failed: \(type), float: \(floatValue), device: \(toDevice.rawValue)")
+                    /*
+                     let matrixData = MatrixData(matrix: transform)
+                     let jsonData = try! JSONEncoder().encode(matrixData)
+                     let simd4String = String(data: jsonData, encoding: .utf8)!
+                     
+                     */
+                    
+                    //let command = Command(type: type, floatValue: floatValue, pointValue: pointValue, simd4String: simd4String
+                    let jsonCommand = try! jsonEncoder.encode(command)
+                    element.dataValue = jsonCommand
+                    
+                    do {
+                        try device.send(element: element)
+                        
+                    } catch {
+                        logError("Command failed: \(type), float: \(floatValue), device: \(toDevice.rawValue)")
+                    }
+                    
                 }
-                 
-            }
+            //}
             
         }
     }
     
-
+    
     
 }
 

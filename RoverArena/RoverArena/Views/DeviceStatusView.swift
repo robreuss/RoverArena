@@ -50,12 +50,12 @@ class DeviceStatusViewLabel: UILabel {
 
 class DeviceStatusView: UIView {
     
-    var worldState = Channels.WorldState() {
+    var globalState = SystemState.GlobalState() {
         didSet {
             
-            for sourceDevice in worldState.devicesState.keys {
+            for sourceDevice in globalState.devicesState.keys {
                 
-                let deviceState = worldState.devicesState[sourceDevice]
+                let deviceState = globalState.devicesState[sourceDevice]
                 
                 // Channel
                 let label = channelStatusLabels[sourceDevice]
@@ -206,7 +206,7 @@ class DeviceStatusView: UIView {
         
     }
     
-    public func setDeviceStatus(device: SourceDevice, status: Channels.DeviceP2PConnectedStatus) {
+    public func setDeviceStatus(device: SourceDevice, status: SystemState.DeviceP2PConnectedStatus) {
         
         if let index = devices.firstIndex(of: device) {
             
@@ -223,6 +223,8 @@ class DeviceStatusView: UIView {
                     statusLightView.backgroundColor = darkYellow
                 case .joined:
                     statusLightView.backgroundColor = darkGreen
+                case .unknown:
+                    statusLightView.backgroundColor = UIColor.clear
                 }
             }
         }
