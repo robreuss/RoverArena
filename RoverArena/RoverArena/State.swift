@@ -11,12 +11,12 @@ import UIKit
 import ElementalController
 import Combine
 
-class SystemState: ObservableObject {
+class State: ObservableObject {
     
-    public static let shared = SystemState()
+    public static let shared = State()
     
     init() {
-        logDebug("Initializing system state for device \(Common.getHostDevice())")
+        logDebug("Initializing system state for device \(Common.currentDevice())")
         
         for sourceDevice in SourceDevice.allCases  {
             devicesState[sourceDevice] = DeviceState()
@@ -155,7 +155,7 @@ class SystemState: ObservableObject {
         init(sourceDevice: SourceDevice? = SourceDevice.none) {
             if let sd = sourceDevice {
                 self.sourceDevice = sd
-                if self.sourceDevice == Common.getHostDevice() {
+                if sourceDevice?.isCurrent() {
                     batteryState = EncodableBatteryState(batteryState: UIDevice.current.batteryState)
                     thermalState = EncodableThermalState(thermalState: ProcessInfo.processInfo.thermalState)
                     
@@ -209,7 +209,7 @@ class SystemState: ObservableObject {
 
     @Published var devicesState: [SourceDevice: DeviceState] = [:]
     var lastSentDeviceState = DeviceState()
-    @Published var myDeviceState = DeviceState(sourceDevice: Common.getHostDevice()) {
+    @Published var myDeviceState = DeviceState(sourceDevice: Common.currentDevice()) {
         didSet {
             //if myDeviceState != lastSentDeviceState {
                 if Common.isHub() {
@@ -238,7 +238,7 @@ class SystemState: ObservableObject {
     }
   
     public func resetMyDeviceState() {
-        myDeviceState = DeviceState(sourceDevice: Common.getHostDevice())
+        myDeviceState = DeviceState(sourceDevice: Common.currentDevice())
     }
 
     //var localDeviceState: DeviceState = DeviceState()
@@ -250,10 +250,10 @@ class SystemState: ObservableObject {
             // Store the incoming device state
             do {
                 let deviceState = try jsonDecoder.decode(DeviceState.self, from: d)
-                logDebug("\(Common.getHostDevice()) processing incoming device state from \(deviceState.sourceDevice)")
+                logDebug("\(Common.currentDevice()) processing incoming device state from \(deviceState.sourceDevice)")
                 devicesState[deviceState.sourceDevice] = deviceState
                 // Send it to all child devices
-                if Common.shared.hubDevice() == Common.getHostDevice() { broadcastStateForDevice(deviceState.sourceDevice) }
+                if Common.shared.hubDevice() == Common.currentDevice() { broadcastStateForDevice(deviceState.sourceDevice) }
             } catch {
                 logError("Could not decode state object: \(error)")
             }
@@ -264,8 +264,8 @@ class SystemState: ObservableObject {
     
     // Push the current device's state to hub
     public func updateHubWithDeviceState() {
-        logDebug("\(Common.getHostDevice()) updating hub device with device state")
-        let deviceState = devicesState[Common.getHostDevice()]
+        logDebug("\(Common.currentDevice()) updating hub device with device state")
+        let deviceState = devicesState[Common.currentDevice()]
         Channels.shared.sendContentTypeToSourceDevice(Common.shared.hubDevice(), toServer: true, type: Channels.ContentType.state, data: deviceState)
         
     }
@@ -273,7 +273,7 @@ class SystemState: ObservableObject {
     // Sub-function used by hub when pushing changed device states
     // out to other devices
     public func sendDeviceStateForDevice(_ sourceDeviceForState: SourceDevice, to device: SourceDevice) {
-        logDebug("\(Common.getHostDevice()) sending state for device \(sourceDeviceForState) to device \(device)")
+        logDebug("\(Common.currentDevice()) sending state for device \(sourceDeviceForState) to device \(device)")
         let deviceState = devicesState[sourceDeviceForState]
         Channels.shared.sendContentTypeToSourceDevice(device, toServer: false, type: Channels.ContentType.state, data: deviceState)
         
@@ -284,7 +284,7 @@ class SystemState: ObservableObject {
         
         var allOtherDevices: [SourceDevice] = []
         for sourceDevice in SourceDevice.allCases  {
-            if sourceDevice != Common.getHostDevice()  {
+            if !sourceDevice.isCurrentDevice() {
                 allOtherDevices.append(sourceDevice)
             }
         }
@@ -294,10 +294,10 @@ class SystemState: ObservableObject {
     // Hub uses this to send updated device state to all devices
     public func broadcastStateForDevice(_ sourceDeviceForState: SourceDevice) {
 
-        if Common.getHostDevice() != Common.shared.hubDevice() {
+        if Common.currentDevice() != Common.shared.hubDevice() {
             fatalError("Attempt to broadcast device state by non-hub device")
         }
-        logDebug("\(Common.getHostDevice()) broadcasting state for device \(sourceDeviceForState)")
+        logDebug("\(Common.currentDevice()) broadcasting state for device \(sourceDeviceForState)")
         for destinationSourceDevice in allOtherDevices {
             sendDeviceStateForDevice(sourceDeviceForState, to: destinationSourceDevice)
         }
@@ -308,10 +308,10 @@ class SystemState: ObservableObject {
     // the current state of all devices
     public func broadcastAllDeviceStates() {
         
-        if Common.getHostDevice() == Common.shared.hubDevice() {
+        if Common.currentDevice() == Common.shared.hubDevice() {
             fatalError("Attempt to broadcast device state by non-hub device")
         }
-        logDebug("\(Common.getHostDevice()) broadcasting state for all devices to all devices")
+        logDebug("\(Common.currentDevice()) broadcasting state for all devices to all devices")
         for stateSourceDevice in SourceDevice.allCases {
             for destinationSourceDevice in SourceDevice.allCases {
                 if destinationSourceDevice != Common.shared.hubDevice() {
@@ -324,7 +324,7 @@ class SystemState: ObservableObject {
 
     func addObservers() {
 
-        logDebug("Adding observers for device \(Common.getHostDevice())")
+        logDebug("Adding observers for device \(Common.currentDevice())")
         let _ = NotificationCenter.default.addObserver(
                         forName: ProcessInfo.thermalStateDidChangeNotification,
                          object: nil,
@@ -359,7 +359,7 @@ class SystemState: ObservableObject {
     // List of source devices that have subscribed for an image feed
     public func devicesRequiringImageFeed() -> Set<SourceDevice> {
 
-        let thisSourceDevice = Common.getHostDevice()
+        let thisSourceDevice = Common.currentDevice()
         var sourceDevicesRequestingImageFeed = Set<SourceDevice>()
         for sourceDevice in SourceDevice.allCases {
             if sourceDevice != thisSourceDevice {
@@ -384,7 +384,7 @@ class SystemState: ObservableObject {
         for sourceDevice in SourceDevice.allCases {
             let requestedSources = devicesState[sourceDevice]?.requestedImageFeedSources
             if let rs = requestedSources {
-                if rs.contains(Common.getHostDevice()) { // Finally we're asking if this device has been requested to provide a feed
+                if rs.contains(Common.currentDevice()) { // Finally we're asking if this device has been requested to provide a feed
                     return true
                 }
             }

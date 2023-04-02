@@ -131,7 +131,7 @@ class DeviceStatusView: UIView {
      */
     
     func setupState() {
-        cancellable = SystemState.shared.$devicesState.sink(receiveValue: { newValue in
+        cancellable = State.shared.$devicesState.sink(receiveValue: { newValue in
             self.refreshViews()
         })
     }
@@ -158,7 +158,7 @@ class DeviceStatusView: UIView {
             
             for sourceDevice in SourceDevice.allCases {
                 
-                if let sourceDeviceState = SystemState.shared.devicesState[sourceDevice] {
+                if let sourceDeviceState = State.shared.devicesState[sourceDevice] {
                     
                     // Channel
                     if let channelStatusLabel = self.channelStatusLabels[sourceDevice] {
@@ -271,7 +271,7 @@ class DeviceStatusView: UIView {
                             batteryStateString = "Unknown"
                             batteryStateLabel.backgroundColor = darkGray
                         }
-                        if sourceDeviceState.channelStatus == .disconnected && sourceDevice != Common.getHostDevice() {
+                        if sourceDeviceState.channelStatus == .disconnected && !sourceDevice.isCurrentDevice() {
                             batteryStateString = "Unknown"
                             batteryStateLabel.backgroundColor = darkGray
                             batteryStateLabel.blink = false
@@ -324,7 +324,7 @@ class DeviceStatusView: UIView {
                             arEnabledLabel.backgroundColor = darkRed
                         }
                         
-                        if sourceDeviceState.sourceDevice != Common.getHostDevice() && sourceDeviceState.channelStatus == .disconnected {
+                        if !sourceDeviceState.sourceDevice.isCurrentDevice() && sourceDeviceState.channelStatus == .disconnected {
                             arEnabledLabel.backgroundColor = darkGray
                             arEnabledLabel.text = "Disconnected"
                         }

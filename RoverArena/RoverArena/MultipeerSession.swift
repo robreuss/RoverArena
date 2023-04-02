@@ -27,7 +27,7 @@ import RoverFramework
 class MultipeerSession: NSObject {
   static let serviceType = "ar-collab"
   
-    private let myPeerID = MCPeerID(displayName: Common.getHostDevice().rawValue)
+    private let myPeerID = MCPeerID(displayName: Common.currentDevice().rawValue)
   private var session: MCSession!
   private var serviceAdvertiser: MCNearbyServiceAdvertiser!
   private var serviceBrowser: MCNearbyServiceBrowser!

@@ -119,7 +119,7 @@ class Channels {
     
     // Broadcast the state of the world to all consumer devices
     func broadcastWorldState() {
-        let globalStateJSON = try! jsonEncoder.encode(SystemState.shared.globalState)
+        let globalStateJSON = try! jsonEncoder.encode(State.shared.globalState)
         for device in consumerDevices.keys {
             sendCommand(type: .worldStatusUpdate, floatValue: 0.0, pointValue: CGPointZero, stringValue: "", boolValue: false, dataValue: globalStateJSON, toDevice: device)
         }
@@ -138,7 +138,7 @@ class Channels {
         
         for device in Common.deviceSet {
             
-            if device != Common.getHostDevice() {
+            if !device.isCurrentDevice() {
                 setupConsumerOfServerDevice(device)
             }
             
@@ -205,7 +205,7 @@ class Channels {
         if !Common.isHub() {
             do {
                 //let encodedDeviceState = try self.jsonEncoder.encode(SystemState.shared.myDeviceState)
-                sendContentTypeToSourceDevice(Common.shared.hubDevice(), toServer: true, type: ContentType.state, data: SystemState.shared.myDeviceState)
+                sendContentTypeToSourceDevice(Common.shared.hubDevice(), toServer: true, type: ContentType.state, data: State.shared.myDeviceState)
             } catch {
                 logError("Recieved encoding error with DeviceState")
             }
@@ -215,7 +215,7 @@ class Channels {
     
     public func sendContentTypeToSourceDevice<T>(_ sourceDevice: SourceDevice, toServer: Bool, type: ContentType, data: T) where T : Encodable {
         
-        if SystemState.shared.myDeviceState.channelStatus != .disconnected {
+        if State.shared.myDeviceState.channelStatus != .disconnected {
             if !toServer {
                 if let device = consumerDevices[sourceDevice], let element = serverElements[type] {
                     sendUsingDevice(device, element)
@@ -268,8 +268,8 @@ class Channels {
             executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: Data.self, element: element)
             processImageFromDevice(sourceDevice, element: element)
         case .state:
-            SystemState.shared.processIncomingDeviceState(data: element.dataValue)
-            executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: SystemState.DeviceState.self, element: element)
+            State.shared.processIncomingDeviceState(data: element.dataValue)
+            executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: State.DeviceState.self, element: element)
         case .collaboration:
             executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: Data.self, element: element)
         }
@@ -315,7 +315,7 @@ class Channels {
     
     
     func annonceSessionID(_ sessionID: String) {
-        SystemState.shared.myDeviceState.sessionIdentifier = sessionID
+        State.shared.myDeviceState.sessionIdentifier = sessionID
     }
     
     public func setupConsumerOfServerDevice(_ sourceDevice: SourceDevice) {
@@ -327,7 +327,7 @@ class Channels {
         
         let deviceNamed = Common.sourceDeviceFromHostName().rawValue
         
-        print("Setting up \(Common.getHostDevice().rawValue) as consumer of \(sourceDevice.rawValue), service name: \(serviceName), deviceNamed: \(deviceNamed)")
+        print("Setting up \(Common.currentDevice().rawValue) as consumer of \(sourceDevice.rawValue), service name: \(serviceName), deviceNamed: \(deviceNamed)")
         
         elementalController.setupForBrowsingAs(deviceNamed: Common.sourceDeviceFromHostName().rawValue)
         
@@ -337,9 +337,9 @@ class Channels {
             
             device.events.deviceDisconnected.handler = { _ in
                 if sourceDevice == Common.shared.hubDevice() {
-                    SystemState.shared.devicesState[sourceDevice] = SystemState.DeviceState(sourceDevice: sourceDevice)
-                    SystemState.shared.devicesState[sourceDevice]?.refreshUI = true
-                    SystemState.shared.devicesState[sourceDevice]?.refreshUI = false
+                    State.shared.devicesState[sourceDevice] = State.DeviceState(sourceDevice: sourceDevice)
+                    State.shared.devicesState[sourceDevice]?.refreshUI = true
+                    State.shared.devicesState[sourceDevice]?.refreshUI = false
                     /*
                     if var deviceState = SystemState.shared.devicesState[sourceDevice] {
                         deviceState.channelStatus = .disconnected
@@ -357,7 +357,7 @@ class Channels {
             device.events.connected.handler = { [self] (device) in
                 
                 if sourceDevice == Common.shared.hubDevice() {
-                    SystemState.shared.myDeviceState.channelStatus = .consumer
+                    State.shared.myDeviceState.channelStatus = .consumer
                 }
                 
                 for contentType in ContentType.allCases {
@@ -410,7 +410,7 @@ class Channels {
     public func setupAsServer() {
         
         
-        let thisDevice = Common.getHostDevice()
+        let thisDevice = Common.currentDevice()
         
         let serviceName = Common.serviceNameFor(sourceDevice: thisDevice, serviceTypeName: "Channel")
         
@@ -423,9 +423,9 @@ class Channels {
             let sourceDevice = Common.sourceDeviceFromString(deviceName: device.displayName)
             self.consumerDevices[sourceDevice] = nil
             if self.consumerDevices.count == 0 {
-                SystemState.shared.myDeviceState.channelStatus = .disconnected
+                State.shared.myDeviceState.channelStatus = .disconnected
             }
-            SystemState.shared.devicesState[sourceDevice] = SystemState.DeviceState(sourceDevice: sourceDevice)
+            State.shared.devicesState[sourceDevice] = State.DeviceState(sourceDevice: sourceDevice)
             // SystemState.shared.devicesState[sourceDevice]?.channelStatus = .disconnected
             
             logDebug("Got device disconnect for service: \(serviceName) device: \(sourceDevice)")
@@ -434,8 +434,8 @@ class Channels {
         
         serverController.service.events.deviceConnected.handler = {  _, device in
             
-            if Common.getHostDevice() == Common.shared.hubDevice() {
-                SystemState.shared.myDeviceState.channelStatus = .server
+            if Common.currentDevice() == Common.shared.hubDevice() {
+                State.shared.myDeviceState.channelStatus = .server
             }
             let clientDevice = device as! ClientDevice
             
@@ -443,7 +443,7 @@ class Channels {
             
             var sourceDevice = Common.sourceDeviceFromString(deviceName: clientDevice.displayName)
             
-            print("Client device \(clientDevice.displayName) (source: \(sourceDevice.rawValue) connected to \(Common.getHostDevice()) -> other: \(clientDevice))")
+            print("Client device \(clientDevice.displayName) (source: \(sourceDevice.rawValue) connected to \(Common.currentDevice()) -> other: \(clientDevice))")
             
             self.consumerDevices[sourceDevice] = clientDevice
             
@@ -477,7 +477,7 @@ class Channels {
     public func broadcastHubDeviceStateToAllDevices() {
         
         for sourceDevice in consumerDevices.keys {
-            sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .state, data: SystemState.shared.myDeviceState)
+            sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .state, data: State.shared.myDeviceState)
         }
     }
     
