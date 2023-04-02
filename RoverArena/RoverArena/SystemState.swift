@@ -134,7 +134,7 @@ class SystemState: ObservableObject {
         var videoSourceDisplaying: VideoSource  = .localAR // UI tracking value
         
         
-        var arEnabled = true
+        var arEnabled = false
         var fps: Float = 0.0
         
         var channelStatus: ChannelStatus = .disconnected

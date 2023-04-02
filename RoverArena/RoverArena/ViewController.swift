@@ -150,6 +150,8 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        runARSession()
+        
         cancellable = SystemState.shared.$myDeviceState.sink(receiveValue: { newValue in
                             DispatchQueue.main.async {
                                 switch ProcessInfo.processInfo.thermalState {
@@ -480,6 +482,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             SystemState.shared.myDeviceState.arEnabled = false
             arView.session.pause()
             SystemState.shared.operationalBrightness = UIScreen.main.brightness
+            SystemState.shared.myDeviceState.fps = 0.0
         }
     }
     
@@ -1228,13 +1231,20 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     let statusMapping: [ARFrame.WorldMappingStatus: SystemState.WorldMappingStatus] = [.notAvailable: .notAvailable, .limited: .limited, .extending: .extending, .mapped: .mapped]
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         
+        print("Ar session state: \(session.currentFrame)")
+        
         systemFPSMonitorCount += 1
         if abs(systemFPSMonitorTimer.timeIntervalSinceNow) >= systemFPSMonitorDisplayFrequency {
             let fps = (systemFPSMonitorCount / systemFPSMonitorDisplayFrequency)
             //print("System FPS: \(fps) - Total Frames in \(systemFPSMonitorDisplayFrequency) seconds: \(systemFPSMonitorCount)")
             systemFPSMonitorCount = 0
             systemFPSMonitorTimer = Date()
-            SystemState.shared.myDeviceState.fps = Float(fps)
+            if SystemState.shared.myDeviceState.arEnabled {
+                SystemState.shared.myDeviceState.fps = Float(fps)
+            } else {
+                SystemState.shared.myDeviceState.fps = 0.0
+            }
+
         }
         
         
