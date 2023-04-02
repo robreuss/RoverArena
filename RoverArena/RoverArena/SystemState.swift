@@ -9,10 +9,26 @@ import Foundation
 import RoverFramework
 import UIKit
 import ElementalController
+import Combine
 
-class SystemState {
+class SystemState: ObservableObject {
     
     public static let shared = SystemState()
+    
+    init() {
+        logDebug("Initializing system state for device \(Common.getHostDevice())")
+        
+        for sourceDevice in SourceDevice.allCases  {
+            devicesState[sourceDevice] = DeviceState()
+        }
+        addObservers()
+        //cancellable = $devicesState.sink { newValue in
+
+        //}
+
+    }
+
+    var cancellable: Cancellable?
     
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
@@ -25,7 +41,7 @@ class SystemState {
     public enum DeviceP2PConnectedStatus: String, Encodable, Decodable {
         case unknown = "Unknown"
         case disconnected = "Disconnected"
-        case waiting = "Waiting To Participate"
+        case waiting = "Waiting"
         case connected = "Connected"
         case joined = "Joined"
     }
@@ -36,17 +52,18 @@ class SystemState {
         case connected = "Connected"
         case joined = "Joined"
     }
-
-    enum ChannelStatus: String, Encodable, Decodable {
-        case offline = "Offline"
-        case connected = "Connected"
-    }
     
     enum WorldMappingStatus: String, Encodable, Decodable {
         case mapped = "Mapped"
         case notAvailable = "Not Available"
         case extending = "Extending"
         case limited = "Limited"
+    }
+    
+    enum ChannelStatus: String, Encodable, Decodable {
+        case disconnected = "Disconnected"
+        case server = "Server"
+        case consumer = "Consumer"
     }
     
     struct Display: Codable {
@@ -67,8 +84,6 @@ class SystemState {
             mode = try values.decode(Mode.self, forKey: .mode)
              
         }
-        
-        //var imageViewSourceDevice = SourceDevice.onboardDevice
         
         var mode: Mode?
         
@@ -100,34 +115,60 @@ class SystemState {
    
     }
 
-    struct DeviceState: Encodable, Decodable {
+    struct DeviceState: Encodable, Decodable, Equatable {
         //let statusMappingToString: [ARFrame.WorldMappingStatus: String] = [.notAvailable: "Not Available", .limited: "Limited", .extending: "Extending", .mapped: "Mapped"]
-        var lastChanged = Date()
+
+        var refreshUI = true
+        
         var sourceDevice: SourceDevice = .none
         var sessionIdentifier: String = ""
         var deviceP2PConnectedStatus: DeviceP2PConnectedStatus = .unknown
         var worldMappingStatus: WorldMappingStatus = .notAvailable
+        
         var thermalState = EncodableThermalState(thermalState: .nominal)
-        var batteryLevel: Float = UIDevice.current.batteryLevel
-        var batteryState = EncodableBatteryState(batteryState: UIDevice.current.batteryState)
+        var batteryLevel: Float = 0.0
+        var batteryState = EncodableBatteryState(batteryState: .unknown)
+        
+        var activeImageFeeds = 0
         var requestedImageFeedSources: [SourceDevice] = []
         var videoSourceDisplaying: VideoSource  = .localAR // UI tracking value
+        
+        
+        var arEnabled = true
+        var fps: Float = 0.0
+        
+        var channelStatus: ChannelStatus = .disconnected
 
+        static func ==(lhs: DeviceState, rhs: DeviceState) -> Bool {
+            return lhs.sourceDevice == rhs.sourceDevice &&
+            lhs.sessionIdentifier == rhs.sessionIdentifier &&
+            lhs.deviceP2PConnectedStatus == rhs.deviceP2PConnectedStatus &&
+            lhs.worldMappingStatus == rhs.worldMappingStatus &&
+            lhs.thermalState == rhs.thermalState &&
+            lhs.batteryLevel == rhs.batteryLevel &&
+            lhs.batteryState == rhs.batteryState &&
+            lhs.activeImageFeeds == rhs.activeImageFeeds &&
+            lhs.requestedImageFeedSources == rhs.requestedImageFeedSources &&
+            lhs.channelStatus == rhs.channelStatus
+        }
+        
+        init(sourceDevice: SourceDevice? = SourceDevice.none) {
+            if let sd = sourceDevice {
+                self.sourceDevice = sd
+                if self.sourceDevice == Common.getHostDevice() {
+                    batteryState = EncodableBatteryState(batteryState: UIDevice.current.batteryState)
+                    thermalState = EncodableThermalState(thermalState: ProcessInfo.processInfo.thermalState)
+                    
+                }
+            }
+        }
     }
     
     // Used for updating the UI, includes state from all devices including the current device
-    // The current device reflected here is coming from onboard rather than the local version
+    // The current device reflected here is coming from hub rather than the local version
     // so could be slightly stale
     public struct GlobalState: Encodable, Decodable {
 
-        var devicesState: [SourceDevice: DeviceState] = [:]
-
-        init() {
-            for sourceDevice in SourceDevice.allCases  {
-                devicesState[sourceDevice] = DeviceState()
-            }
-        }
-        
         /*
         public var myState: DeviceState? {
             get {
@@ -149,7 +190,6 @@ class SystemState {
 
     }
 
-
     
     var globalState = GlobalState() {
         didSet {
@@ -159,7 +199,47 @@ class SystemState {
         }
     }
     
-    var myDeviceState = DeviceState(sourceDevice: Common.getHostDevice())
+    var launchBrightness = UIScreen.main.brightness
+    
+    var operationalBrightness = UIScreen.main.brightness {
+        didSet {
+            UIScreen.main.brightness = operationalBrightness
+        }
+    }
+
+    @Published var devicesState: [SourceDevice: DeviceState] = [:]
+    var lastSentDeviceState = DeviceState()
+    @Published var myDeviceState = DeviceState(sourceDevice: Common.getHostDevice()) {
+        didSet {
+            //if myDeviceState != lastSentDeviceState {
+                if Common.isHub() {
+                    Channels.shared.broadcastHubDeviceStateToAllDevices()
+                } else {
+                    Channels.shared.reportDeviceStatusToHubDevice()
+                }
+                lastSentDeviceState = myDeviceState
+            
+            if UIDevice.current.isBatteryMonitoringEnabled == false {
+                UIDevice.current.isBatteryMonitoringEnabled = true
+                usleep(500000)
+                print("Battery: \(UIDevice.current.batteryLevel)")
+                myDeviceState.batteryLevel = UIDevice.current.batteryLevel
+                myDeviceState.batteryState.batteryState = UIDevice.current.batteryState
+                print("New state: \(myDeviceState.batteryState.batteryState)")
+                print("")
+            }
+            if devicesRequiringImageFeed().count > 0 {
+                //myDeviceState.image
+            }
+            
+            devicesState[myDeviceState.sourceDevice] = myDeviceState
+           // }
+        }
+    }
+  
+    public func resetMyDeviceState() {
+        myDeviceState = DeviceState(sourceDevice: Common.getHostDevice())
+    }
 
     //var localDeviceState: DeviceState = DeviceState()
     
@@ -171,9 +251,9 @@ class SystemState {
             do {
                 let deviceState = try jsonDecoder.decode(DeviceState.self, from: d)
                 logDebug("\(Common.getHostDevice()) processing incoming device state from \(deviceState.sourceDevice)")
-                globalState.devicesState[deviceState.sourceDevice] = deviceState
+                devicesState[deviceState.sourceDevice] = deviceState
                 // Send it to all child devices
-                if Common.shared.onboardDevice() == Common.getHostDevice() { broadcastStateForDevice(deviceState.sourceDevice) }
+                if Common.shared.hubDevice() == Common.getHostDevice() { broadcastStateForDevice(deviceState.sourceDevice) }
             } catch {
                 logError("Could not decode state object: \(error)")
             }
@@ -182,20 +262,20 @@ class SystemState {
         }
     }
     
-    // Push the current device's state to onboard
-    public func updateOnboardWithDeviceState() {
-        logDebug("\(Common.getHostDevice()) updating onboard device with device state")
-        let deviceState = globalState.devicesState[Common.getHostDevice()]
-        Channels.shared.sendContentTypeToSourceDevice(Common.shared.onboardDevice(), type: Channels.ContentType.state, data: deviceState)
+    // Push the current device's state to hub
+    public func updateHubWithDeviceState() {
+        logDebug("\(Common.getHostDevice()) updating hub device with device state")
+        let deviceState = devicesState[Common.getHostDevice()]
+        Channels.shared.sendContentTypeToSourceDevice(Common.shared.hubDevice(), toServer: true, type: Channels.ContentType.state, data: deviceState)
         
     }
     
-    // Sub-function used by onboard when pushing changed device states
+    // Sub-function used by hub when pushing changed device states
     // out to other devices
     public func sendDeviceStateForDevice(_ sourceDeviceForState: SourceDevice, to device: SourceDevice) {
         logDebug("\(Common.getHostDevice()) sending state for device \(sourceDeviceForState) to device \(device)")
-        let deviceState = globalState.devicesState[sourceDeviceForState]
-        Channels.shared.sendContentTypeToSourceDevice(device, type: Channels.ContentType.state, data: deviceState)
+        let deviceState = devicesState[sourceDeviceForState]
+        Channels.shared.sendContentTypeToSourceDevice(device, toServer: false, type: Channels.ContentType.state, data: deviceState)
         
     }
     
@@ -211,11 +291,11 @@ class SystemState {
         return allOtherDevices
     }
     
-    // Onboard uses this to send updated device state to all devices
+    // Hub uses this to send updated device state to all devices
     public func broadcastStateForDevice(_ sourceDeviceForState: SourceDevice) {
 
-        if Common.getHostDevice() != Common.shared.onboardDevice() {
-            fatalError("Attempt to broadcast device state by non-onboard device")
+        if Common.getHostDevice() != Common.shared.hubDevice() {
+            fatalError("Attempt to broadcast device state by non-hub device")
         }
         logDebug("\(Common.getHostDevice()) broadcasting state for device \(sourceDeviceForState)")
         for destinationSourceDevice in allOtherDevices {
@@ -224,29 +304,24 @@ class SystemState {
         
     }
     
-    // This can be used by onboard when it wants to blast all devices with
+    // This can be used by hub when it wants to blast all devices with
     // the current state of all devices
     public func broadcastAllDeviceStates() {
         
-        if Common.getHostDevice() == Common.shared.onboardDevice() {
-            fatalError("Attempt to broadcast device state by non-onboard device")
+        if Common.getHostDevice() == Common.shared.hubDevice() {
+            fatalError("Attempt to broadcast device state by non-hub device")
         }
         logDebug("\(Common.getHostDevice()) broadcasting state for all devices to all devices")
         for stateSourceDevice in SourceDevice.allCases {
             for destinationSourceDevice in SourceDevice.allCases {
-                if destinationSourceDevice != Common.shared.onboardDevice() {
+                if destinationSourceDevice != Common.shared.hubDevice() {
                     sendDeviceStateForDevice(stateSourceDevice, to: destinationSourceDevice)
                 }
             }
         }
         
     }
-    
-    init() {
-        logDebug("Initializing system state for device \(Common.getHostDevice())")
-        addObservers()
-    }
-    
+
     func addObservers() {
 
         logDebug("Adding observers for device \(Common.getHostDevice())")
@@ -255,7 +330,7 @@ class SystemState {
                          object: nil,
                           queue: nil) { notification in
                               self.myDeviceState.thermalState = EncodableThermalState(thermalState: ProcessInfo.processInfo.thermalState)
-                              Channels.shared.reportDeviceStatusToOnboardDevice()
+                              //Channels.shared.reportDeviceStatusToHubDevice()
         }
         
         let _ = NotificationCenter.default.addObserver(
@@ -263,7 +338,6 @@ class SystemState {
                          object: nil,
                           queue: nil) { notification in
                               self.myDeviceState.batteryLevel = UIDevice.current.batteryLevel
-                              Channels.shared.reportDeviceStatusToOnboardDevice()
         }
         
         let _ = NotificationCenter.default.addObserver(
@@ -271,7 +345,6 @@ class SystemState {
                          object: nil,
                           queue: nil) { notification in
                               self.myDeviceState.batteryState = EncodableBatteryState(batteryState: UIDevice.current.batteryState)
-                              Channels.shared.reportDeviceStatusToOnboardDevice()
         }
 
     }
@@ -290,10 +363,10 @@ class SystemState {
         var sourceDevicesRequestingImageFeed = Set<SourceDevice>()
         for sourceDevice in SourceDevice.allCases {
             if sourceDevice != thisSourceDevice {
-                let deviceState = globalState.devicesState[sourceDevice]
+                let deviceState = devicesState[sourceDevice]
                 if let requestedImageFeeds = deviceState?.requestedImageFeedSources {
                     if requestedImageFeeds.contains(thisSourceDevice) {
-                        logDebug("Source device \(sourceDevice) requires image feed from \(Common.getHostDevice())")
+                        //logDebug("Source device \(sourceDevice) requires image feed from \(Common.getHostDevice())")
                         sourceDevicesRequestingImageFeed.insert(sourceDevice)
                     }
                 }
@@ -309,7 +382,7 @@ class SystemState {
     public var imageFeedRequired: Bool {
 
         for sourceDevice in SourceDevice.allCases {
-            let requestedSources = globalState.devicesState[sourceDevice]?.requestedImageFeedSources
+            let requestedSources = devicesState[sourceDevice]?.requestedImageFeedSources
             if let rs = requestedSources {
                 if rs.contains(Common.getHostDevice()) { // Finally we're asking if this device has been requested to provide a feed
                     return true
@@ -323,9 +396,13 @@ class SystemState {
     }
 
     
-    struct EncodableThermalState: Codable {
+    struct EncodableThermalState: Codable, Equatable {
         let thermalState: ProcessInfo.ThermalState
 
+        static func ==(lhs: EncodableThermalState, rhs: EncodableThermalState) -> Bool {
+            return lhs.thermalState == rhs.thermalState
+        }
+        
         enum CodingKeys: String, CodingKey {
             case thermalState
         }
@@ -351,10 +428,13 @@ class SystemState {
         }
     }
     
-    struct EncodableBatteryState: Codable {
+    struct EncodableBatteryState: Codable, Equatable {
         
         var batteryState = UIDevice.current.batteryState
-
+        static func ==(lhs: EncodableBatteryState, rhs: EncodableBatteryState) -> Bool {
+            return lhs.batteryState == rhs.batteryState
+        }
+        
         enum CodingKeys: String, CodingKey {
             case batteryState
         }
@@ -370,7 +450,7 @@ class SystemState {
             if let state = UIDevice.BatteryState(rawValue: rawValue) {
                 self.batteryState = state
             } else {
-                throw DecodingError.dataCorruptedError(forKey: .batteryState, in: container, debugDescription: "Invalid battery  state raw value")
+                throw DecodingError.dataCorruptedError(forKey: .batteryState, in: container, debugDescription: "Invalid battery state raw value")
             }
         }
 

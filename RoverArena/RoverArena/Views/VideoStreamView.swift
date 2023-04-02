@@ -54,7 +54,7 @@ class VideoStreamView: UIView {
         
         imageView.frame = CGRectMake(0.0, 0.0, bounds.width, bounds.height)
         addSubview(imageView)
-        imageView.backgroundColor = UIColor.purple
+        imageView.backgroundColor = UIColor.clear
         imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         NSLayoutConstraint.activate([
             imageView.leadingAnchor.constraint(equalTo: self.leadingAnchor),

@@ -16,11 +16,6 @@
                         <rect key="frame" x="0.0" y="0.0" width="1366" height="1024"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                         <subviews>
-                            <view contentMode="scaleToFill" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="1M7-oh-qII" customClass="DeviceStatusView" customModule="RoverArena" customModuleProvider="target">
-                                <rect key="frame" x="563" y="448" width="260" height="128"/>
-                                <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
-                                <color key="backgroundColor" systemColor="systemBackgroundColor"/>
-                            </view>
                             <arView multipleTouchEnabled="YES" contentMode="scaleToFill" preservesSuperviewLayoutMargins="YES" translatesAutoresizingMaskIntoConstraints="NO" id="P3K-l5-YrB">
                                 <rect key="frame" x="50" y="63" width="1290" height="938"/>
                             </arView>
@@ -47,23 +42,31 @@
                                 <viewLayoutGuide key="contentLayoutGuide" id="iq0-LA-Pgk"/>
                                 <viewLayoutGuide key="frameLayoutGuide" id="IET-7y-xkb"/>
                             </scrollView>
+                            <view contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="1M7-oh-qII" customClass="DeviceStatusView" customModule="RoverArena" customModuleProvider="target">
+                                <rect key="frame" x="28" y="788" width="1260" height="128"/>
+                                <color key="backgroundColor" systemColor="systemBackgroundColor"/>
+                            </view>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="DgE-yh-MD0"/>
                         <color key="backgroundColor" white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
                         <constraints>
                             <constraint firstItem="DgE-yh-MD0" firstAttribute="trailing" secondItem="fbX-61-BKn" secondAttribute="trailing" constant="1019" id="67N-Pf-cbD"/>
+                            <constraint firstItem="1M7-oh-qII" firstAttribute="top" secondItem="Wcz-AS-9hx" secondAttribute="top" constant="788" id="I7K-7w-WNs"/>
                             <constraint firstItem="fbX-61-BKn" firstAttribute="leading" secondItem="Wcz-AS-9hx" secondAttribute="leadingMargin" id="IYe-bV-cg0"/>
                             <constraint firstItem="P3K-l5-YrB" firstAttribute="centerY" secondItem="akf-Y6-X8z" secondAttribute="centerY" id="JlX-ll-zxq"/>
                             <constraint firstAttribute="bottom" secondItem="fbX-61-BKn" secondAttribute="bottom" constant="756" id="LP2-Gb-DcP"/>
+                            <constraint firstItem="1M7-oh-qII" firstAttribute="leading" secondItem="DgE-yh-MD0" secondAttribute="leading" constant="28" id="Md8-Ka-3sG"/>
                             <constraint firstItem="Zly-BY-axu" firstAttribute="leading" relation="greaterThanOrEqual" secondItem="DgE-yh-MD0" secondAttribute="leading" id="QA3-z1-wHP"/>
                             <constraint firstItem="P3K-l5-YrB" firstAttribute="centerX" secondItem="akf-Y6-X8z" secondAttribute="centerX" id="S5Z-DE-j2Y"/>
                             <constraint firstItem="DgE-yh-MD0" firstAttribute="trailing" secondItem="P3K-l5-YrB" secondAttribute="trailing" constant="26" id="brW-2y-h1z"/>
+                            <constraint firstItem="DgE-yh-MD0" firstAttribute="trailing" secondItem="1M7-oh-qII" secondAttribute="trailing" constant="78" id="f4h-wW-CJZ"/>
                             <constraint firstItem="P3K-l5-YrB" firstAttribute="centerX" secondItem="Zly-BY-axu" secondAttribute="centerX" id="kgF-CT-Vz7"/>
                             <constraint firstItem="DgE-yh-MD0" firstAttribute="trailing" secondItem="Zly-BY-axu" secondAttribute="trailing" constant="160" id="khY-s7-h8r"/>
                             <constraint firstItem="fbX-61-BKn" firstAttribute="top" secondItem="DgE-yh-MD0" secondAttribute="top" id="paQ-bK-Q1k"/>
                             <constraint firstItem="DgE-yh-MD0" firstAttribute="bottom" secondItem="P3K-l5-YrB" secondAttribute="bottom" constant="23" id="qUe-JI-fad"/>
                             <constraint firstItem="P3K-l5-YrB" firstAttribute="leading" secondItem="DgE-yh-MD0" secondAttribute="leading" constant="50" id="rCa-Qy-Z8r"/>
                             <constraint firstItem="P3K-l5-YrB" firstAttribute="top" secondItem="DgE-yh-MD0" secondAttribute="top" constant="43" id="vV9-SO-ZIe"/>
+                            <constraint firstItem="DgE-yh-MD0" firstAttribute="bottom" secondItem="1M7-oh-qII" secondAttribute="bottom" constant="108" id="zlL-F5-e6Y"/>
                         </constraints>
                     </view>
                     <connections>

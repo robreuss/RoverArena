@@ -8,7 +8,7 @@
 import Foundation
 import UIKit
 import RoverFramework
-
+import Combine
 
 // Columns
 // Device Name
@@ -46,25 +46,52 @@ class DeviceStatusViewLabel: UILabel {
         configure()
     }
     
+    var labelText: String = "~" {
+        didSet {
+            text = labelText
+            refreshBlink()
+        }
+    }
+    
+    var blink: Bool = false {
+        didSet {
+            refreshBlink()
+        }
+    }
+    
+    func refreshBlink() {
+        if blink {
+            UIView.animate(withDuration: 0.7, delay: 0.0, options: [.autoreverse, .repeat], animations: {
+                self.alpha = 0.7
+            }, completion: nil)
+        } else {
+            self.layer.removeAllAnimations()
+            alpha = 1.0
+        }
+    }
+    
 }
 
 class DeviceStatusView: UIView {
     
-    var globalState = SystemState.GlobalState() {
+    /*
+    var state = SystemState() {
         didSet {
             
-            for sourceDevice in globalState.devicesState.keys {
+            for sourceDevice in devicesState.keys {
                 
-                let deviceState = globalState.devicesState[sourceDevice]
+                let deviceState = devicesState[sourceDevice]
                 
                 // Channel
                 let label = channelStatusLabels[sourceDevice]
-                
+                label?.text = deviceState?.channelStatus.rawValue
                 
             }
             
         }
     }
+    */
+
     
     let leftMargin: CGFloat = 4.0
     let rightMargin: CGFloat = 4.0
@@ -78,20 +105,41 @@ class DeviceStatusView: UIView {
 
     var deviceNameLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var channelStatusLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
+    var thermalStateLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
+    var batteryStateLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
+    var batteryLevelLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var p2pStatusLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var mappingStatusLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
-    var arStatusLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var imageFeedStatusLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var worldPositionLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     
-    let onboardDevice = Array(Common.shared.devicesWithRole(.onboard))
-    let tripodDevice = Array(Common.shared.devicesWithRole(.tripod))
+    var fpsLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
+    var arEnabledLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
+  
+    let hubDevice = Array(Common.shared.devicesWithRole(.hub))
+    //let tripodDevice = Array(Common.shared.devicesWithRole(.tripod))
     let controllers = Array(Common.shared.devicesWithRole(.controller))
     var devices: [SourceDevice] = []
+    
+    var cancellable: AnyCancellable?
+
+    /*
+    let cancellable = SystemState.shared.$devicesState.sink { newValue in
+        refreshViews()
+        print("myProperty has changed to: \(newValue)")
+    }
+     */
+    
+    func setupState() {
+        cancellable = SystemState.shared.$devicesState.sink(receiveValue: { newValue in
+            self.refreshViews()
+        })
+    }
     
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupViews()
+        setupState()
         
     }
     
@@ -99,6 +147,230 @@ class DeviceStatusView: UIView {
         super.init(coder: coder)
         
         setupViews()
+        setupState()
+    }
+    
+    private func refreshViews() {
+        
+        print("Refreshing status views")
+        
+        DispatchQueue.main.async {
+            
+            for sourceDevice in SourceDevice.allCases {
+                
+                if let sourceDeviceState = SystemState.shared.devicesState[sourceDevice] {
+                    
+                    // Channel
+                    if let channelStatusLabel = self.channelStatusLabels[sourceDevice] {
+                        channelStatusLabel.text = sourceDeviceState.channelStatus.rawValue
+                        switch sourceDeviceState.channelStatus {
+                        case .disconnected:
+                            channelStatusLabel.backgroundColor = darkGray
+                        case .consumer:
+                            channelStatusLabel.backgroundColor = darkGreen
+                        case .server:
+                            channelStatusLabel.backgroundColor = darkGreen
+                        }
+                    }
+                    
+                    // Thermal
+                    if let thermalStateLabel = self.thermalStateLabels[sourceDevice] {
+                        var thermalStateString: String
+                        
+                        switch sourceDeviceState.thermalState.thermalState {
+                        case .nominal:
+                            thermalStateString = "Nominal"
+                            thermalStateLabel.backgroundColor = darkGreen
+                            thermalStateLabel.blink = false
+                        case .fair:
+                            thermalStateString = "Fair"
+                            thermalStateLabel.backgroundColor = darkYellow
+                            thermalStateLabel.blink = false
+                        case .serious:
+                            thermalStateString = "Serious"
+                            thermalStateLabel.backgroundColor = darkRed
+                            thermalStateLabel.blink = false
+                        case .critical:
+                            thermalStateString = "Critical"
+                            thermalStateLabel.backgroundColor = darkRed
+                            thermalStateLabel.blink = true
+                        @unknown default:
+                            thermalStateString = "Unknown"
+                            thermalStateLabel.backgroundColor = darkGray
+                        }
+                        if sourceDeviceState.channelStatus == .disconnected {
+                            thermalStateString = "Unknown"
+                            thermalStateLabel.backgroundColor = darkGray
+                            thermalStateLabel.blink = false
+                        }
+                        thermalStateLabel.text = thermalStateString
+                    }
+                    
+                    
+                    // Battery Level
+                    var batteryLevelColor = darkGray
+                    if let batteryLevelLabel = self.batteryLevelLabels[sourceDevice] {
+                        
+                        let batteryLevelInt = Int(sourceDeviceState.batteryLevel * 100.0)
+                        
+                        batteryLevelLabel.text = "\(batteryLevelInt)%"
+                        //print("\(sourceDevice), Battery level: \(batteryLevelInt), float: \(sourceDeviceState.batteryLevel)")
+                        switch batteryLevelInt {
+                            
+                        case -1:
+                            batteryLevelLabel.backgroundColor = darkRed
+                            batteryLevelLabel.blink = true
+                            batteryLevelLabel.text = "Not enabled"
+                        case 1..<4:
+                            batteryLevelLabel.backgroundColor = darkGreen
+                            batteryLevelLabel.blink = false
+                        case 4..<25:
+                            batteryLevelLabel.backgroundColor = darkRed
+                            batteryLevelLabel.blink = true
+                        case 25..<40:
+                            batteryLevelLabel.backgroundColor = darkRed
+                            batteryLevelLabel.blink = false
+                        case 40..<75:
+                            batteryLevelLabel.backgroundColor = darkYellow
+                            batteryLevelLabel.blink = false
+                        case 75...100:
+                            batteryLevelLabel.backgroundColor = darkGreen
+                            batteryLevelLabel.blink = false
+                        default:
+                            batteryLevelLabel.backgroundColor = darkGray
+                            batteryLevelLabel.blink = false
+                            batteryLevelLabel.text = "Unknown"
+                        }
+                        
+                        batteryLevelColor = batteryLevelLabel.backgroundColor!
+                        
+                    }
+                    
+                    // Battery State
+                    if let batteryStateLabel = self.batteryStateLabels[sourceDevice] {
+                        var batteryStateString: String
+                        
+                        switch sourceDeviceState.batteryState.batteryState {
+                        case .unknown:
+                            batteryStateString = "Unknown"
+                            batteryStateLabel.backgroundColor = darkGray
+                            batteryStateLabel.blink = false
+                        case .unplugged:
+                            batteryStateString = "Unplugged"
+                            batteryStateLabel.backgroundColor = batteryLevelColor
+                            batteryStateLabel.blink = false
+                        case .charging:
+                            batteryStateString = "Charging"
+                            batteryStateLabel.backgroundColor = batteryLevelColor
+                            batteryStateLabel.blink = false
+                        case .full:
+                            batteryStateString = "Full"
+                            batteryStateLabel.backgroundColor = darkGreen
+                            batteryStateLabel.blink = false
+                        @unknown default:
+                            batteryStateString = "Unknown"
+                            batteryStateLabel.backgroundColor = darkGray
+                        }
+                        if sourceDeviceState.channelStatus == .disconnected && sourceDevice != Common.getHostDevice() {
+                            batteryStateString = "Unknown"
+                            batteryStateLabel.backgroundColor = darkGray
+                            batteryStateLabel.blink = false
+                        }
+                        batteryStateLabel.text = batteryStateString
+                    }
+
+                    
+                    // FPS
+                    if let fpsLevelLabel = self.fpsLabels[sourceDevice] {
+                        
+                        let fps = Int(sourceDeviceState.fps)
+                        fpsLevelLabel.text = "\(fps)"
+                        switch fps {
+                            
+                        case 0..<1:
+                            fpsLevelLabel.backgroundColor = darkGray
+                            fpsLevelLabel.blink = false
+                            fpsLevelLabel.text = "~"
+                            
+                        case 1..<15:
+                            fpsLevelLabel.backgroundColor = darkRed
+                            fpsLevelLabel.blink = true
+                        case 15..<30:
+                            fpsLevelLabel.backgroundColor = darkRed
+                            fpsLevelLabel.blink = false
+                        case 30..<60:
+                            fpsLevelLabel.backgroundColor = darkYellow
+                            fpsLevelLabel.blink = false
+                        case 60..<75:
+                            fpsLevelLabel.backgroundColor = darkGreen
+                            fpsLevelLabel.blink = false
+                        default:
+                            fpsLevelLabel.backgroundColor = darkGray
+                            fpsLevelLabel.blink = false
+                            fpsLevelLabel.text = "0.0"
+                        }
+                        
+                    }
+                    
+                    
+                    // AREnabled
+                    if let arEnabledLabel = self.arEnabledLabels[sourceDevice] {
+                        
+                        arEnabledLabel.text = sourceDeviceState.arEnabled ? "Yes" : "No"
+                        
+                        if sourceDeviceState.arEnabled {
+                            arEnabledLabel.backgroundColor = darkGreen
+                        } else {
+                            arEnabledLabel.backgroundColor = darkRed
+                        }
+                        
+                        if sourceDeviceState.sourceDevice != Common.getHostDevice() && sourceDeviceState.channelStatus == .disconnected {
+                            arEnabledLabel.backgroundColor = darkGray
+                            arEnabledLabel.text = "Disconnected"
+                        }
+                        
+                    }
+                    
+                    // P2P status
+                    if let p2pStatusLabel = self.p2pStatusLabels[sourceDevice] {
+                        
+                        switch sourceDeviceState.deviceP2PConnectedStatus {
+                            
+                        case .waiting:
+                            p2pStatusLabel.backgroundColor = darkYellow
+                            p2pStatusLabel.blink = false
+                            p2pStatusLabel.text = "Waiting"
+                            
+                        case .unknown:
+                            p2pStatusLabel.backgroundColor = darkGray
+                            p2pStatusLabel.blink = false
+                            p2pStatusLabel.text = "Unknown"
+                            
+                        case .joined:
+                            p2pStatusLabel.backgroundColor = darkGreen
+                            p2pStatusLabel.blink = false
+                            p2pStatusLabel.text = "Joined"
+                            
+                        case .connected:
+                            p2pStatusLabel.backgroundColor = darkGreen
+                            p2pStatusLabel.blink = false
+                            p2pStatusLabel.text = "Connected"
+                            
+                        case .disconnected:
+                            p2pStatusLabel.backgroundColor = darkRed
+                            p2pStatusLabel.blink = true
+                            p2pStatusLabel.text = "Disconnected"
+                            
+                        }
+                        
+                    }
+
+                    
+                }
+                
+            }
+        }
+        
     }
     
     private func addColumn(header: String, defaults: [String], width: CGFloat) -> [SourceDevice: DeviceStatusViewLabel] {
@@ -136,25 +408,31 @@ class DeviceStatusView: UIView {
         
         let statusLightWidth: CGFloat = 90.0
         let deviceNameWidth: CGFloat = 175.0
-    
-        devices = onboardDevice + tripodDevice + controllers
+
+        devices = hubDevice + [.iPhone14ProMax, .iPhone12Pro, .iPhoneXSMax]
+        //devices = hubDevice + tripodDevice + controllers
         let deviceNames = devices.map { device in
             return device.rawValue
         }
         
-        backgroundColor = UIColor.lightGray
+        backgroundColor = UIColor.black
         rowWidth = self.bounds.width - (rightMargin + leftMargin)
 
-        
         var totalHeight = (rowHeight + rowSpacing) * CGFloat(Common.deviceSet.count) + topMargin + topMargin
         
         deviceNameLabels = addColumn(header: "Device", defaults: deviceNames, width: deviceNameWidth)
         channelStatusLabels = addColumn(header: "Channel", defaults: ["Disconnected"], width: statusLightWidth)
+        thermalStateLabels = addColumn(header: "Thermal", defaults: ["Disconnected"], width: statusLightWidth)
+        batteryStateLabels = addColumn(header: "Power State", defaults: ["Disconnected"], width: statusLightWidth)
+        batteryLevelLabels = addColumn(header: "Power Level", defaults: ["Disconnected"], width: statusLightWidth)
+        imageFeedStatusLabels = addColumn(header: "Video", defaults: ["Disabled"], width: statusLightWidth)
         p2pStatusLabels = addColumn(header: "P2P", defaults: ["Disconnected"], width: statusLightWidth)
         mappingStatusLabels = addColumn(header: "Mapping", defaults: ["None"], width: statusLightWidth)
-        arStatusLabels = addColumn(header: "World", defaults: ["Undefined"], width: statusLightWidth)
-        imageFeedStatusLabels = addColumn(header: "Video", defaults: ["Disabled"], width: statusLightWidth)
-        worldPositionLabels = addColumn(header: "Position", defaults: ["Pending"], width: statusLightWidth)
+        //arStatusLabels = addColumn(header: "World", defaults: ["Disconnected"], width: statusLightWidth)
+        arEnabledLabels = addColumn(header: "Rendering", defaults: ["No"], width: statusLightWidth)
+        fpsLabels = addColumn(header: "FPS", defaults: ["0.0"], width: statusLightWidth)
+        worldPositionLabels = addColumn(header: "Position", defaults: ["Disconnected"], width: statusLightWidth)
+
 
         /*
          for device in devices {
@@ -206,6 +484,7 @@ class DeviceStatusView: UIView {
         
     }
     
+    /*
     public func setDeviceStatus(device: SourceDevice, status: SystemState.DeviceP2PConnectedStatus) {
         
         if let index = devices.firstIndex(of: device) {
@@ -229,5 +508,6 @@ class DeviceStatusView: UIView {
             }
         }
     }
+     */
     
 }
