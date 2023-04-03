@@ -68,20 +68,20 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
         //if UIDevice.current.userInterfaceIdiom == .phone {
             if self.deviceRole != .hub {
-                if State.shared.myDeviceState.videoSourceDisplaying == .localAR {
+                if State.shared.currentDeviceState.videoSourceDisplaying == .localAR {
                     
                     arView.isHidden = true
                     videoStreamViewOnboard.isHidden = false
-                    State.shared.myDeviceState.videoSourceDisplaying = .imageFeed
-                    State.shared.myDeviceState.requestedImageFeedSources = [Common.shared.hubDevice()]
+                    State.shared.currentDeviceState.videoSourceDisplaying = .imageFeed
+                    State.shared.currentDeviceState.requestedImageFeedSources = [Common.shared.hubDevice()]
                     arView.session.pause()
                     
-                } else if State.shared.myDeviceState.videoSourceDisplaying == .imageFeed {
+                } else if State.shared.currentDeviceState.videoSourceDisplaying == .imageFeed {
                     
                     arView.isHidden = false
                     videoStreamViewOnboard.isHidden = true
-                    State.shared.myDeviceState.videoSourceDisplaying = .localAR
-                    State.shared.myDeviceState.requestedImageFeedSources = []
+                    State.shared.currentDeviceState.videoSourceDisplaying = .localAR
+                    State.shared.currentDeviceState.requestedImageFeedSources = []
                     if let config = arConfiguration {
                         arView.session.run(config)
                     }
@@ -152,27 +152,16 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
         runARSession()
         
-        cancellable = State.shared.$myDeviceState.sink(receiveValue: { newValue in
+        cancellable = State.shared.$currentDeviceState.sink(receiveValue: { newValue in
                             DispatchQueue.main.async {
                                 switch ProcessInfo.processInfo.thermalState {
-                                case .critical, .serious:
+                                case .critical:
                                     self.pauseARSession()
-                                case .fair,.nominal:
+                                case .fair,.nominal,.serious:
                                     self.runARSession()
                                 }
                             }
                         })
-        /*
-        cancellable = SystemState.shared.$myDeviceState.sink { newValue in
-            switch ProcessInfo.processInfo.thermalState {
-            case .critical, .serious:
-                self.pauseARSession()
-            case .fair,.nominal:
-                self.runARSession()
-            }
-            // print("Heat state is \(ProcessInfo.processInfo.thermalState)")
-        }
-        */
         usleep(700000) // Prevent coming up with unknown host
         
         let c = common.deviceRoles.filter { $0.value == .controller }
@@ -358,7 +347,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             initDeviceStatusView()
             initCommandButtonsViews()
 
-            State.shared.myDeviceState.requestedImageFeedSources = [hubDevice, .iPhone14ProMax]
+            State.shared.currentDeviceState.requestedImageFeedSources = [hubDevice, .iPhone14ProMax]
 
             //imageView.autoresizingMask = [.flexibleRightMargin, .flexibleBottomMargin]
             //imageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
@@ -405,13 +394,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                     case .broadcastSessionID:
                         print("Received session ID: \(commandObject.stringValue) from \(sourceDevice)")
                         connectedSourceDevicesSessionIDs[commandObject.stringValue] = sourceDevice
-                        
-                        /*
-                    case .deviceStatusUpdate:
-                        let deviceState = try! jsonDecoder.decode(Channels.DeviceState.self, from: commandObject.dataValue)
-                        channels.worldState.devicesState[sourceDevice] = deviceState
-                        channels.broadcastWorldState()
-                        */
+
                     default:
                         print("Unhandled command: \(commandObject)")
                     }
@@ -478,17 +461,17 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     //public typealias CommandButtonHandler = (action: UIAction) -> Void
     
     func pauseARSession() {
-        if State.shared.myDeviceState.arEnabled {
-            State.shared.myDeviceState.arEnabled = false
+        if State.shared.currentDeviceState.arEnabled {
+            State.shared.currentDeviceState.arEnabled = false
             arView.session.pause()
             State.shared.operationalBrightness = UIScreen.main.brightness
-            State.shared.myDeviceState.fps = 0.0
+            State.shared.currentDeviceState.fps = 0.0
         }
     }
     
     func runARSession() {
-        if State.shared.myDeviceState.arEnabled == false {
-            print("Ar2: \(State.shared.myDeviceState.arEnabled)")
+        if State.shared.currentDeviceState.arEnabled == false {
+            print("Ar2: \(State.shared.currentDeviceState.arEnabled)")
 
             arView.session.delegate = self
             arView.automaticallyConfigureSession = false
@@ -505,8 +488,8 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             if !device.isCurrentDevice() {
                 State.shared.operationalBrightness = 0.2
             }
-            State.shared.myDeviceState.arEnabled = true
-            print("Ar3: \(State.shared.myDeviceState.arEnabled)")
+            State.shared.currentDeviceState.arEnabled = true
+            print("Ar3: \(State.shared.currentDeviceState.arEnabled)")
         }
     }
     
@@ -1231,7 +1214,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     let statusMapping: [ARFrame.WorldMappingStatus: State.WorldMappingStatus] = [.notAvailable: .notAvailable, .limited: .limited, .extending: .extending, .mapped: .mapped]
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         
-        print("Ar session state: \(session.currentFrame)")
+        //print("Ar session state: \(session.currentFrame)")
         
         systemFPSMonitorCount += 1
         if abs(systemFPSMonitorTimer.timeIntervalSinceNow) >= systemFPSMonitorDisplayFrequency {
@@ -1239,10 +1222,10 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             //print("System FPS: \(fps) - Total Frames in \(systemFPSMonitorDisplayFrequency) seconds: \(systemFPSMonitorCount)")
             systemFPSMonitorCount = 0
             systemFPSMonitorTimer = Date()
-            if State.shared.myDeviceState.arEnabled {
-                State.shared.myDeviceState.fps = Float(fps)
+            if State.shared.currentDeviceState.arEnabled {
+                State.shared.currentDeviceState.fps = Float(fps)
             } else {
-                State.shared.myDeviceState.fps = 0.0
+                State.shared.currentDeviceState.fps = 0.0
             }
 
         }
@@ -1251,8 +1234,8 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         let timePerFrame = 1.0 / Double(channels.imageProcessingFPS)
         
         //channels.localDeviceState.worldMappingStatus = frame.worldMappingStatus.rawValue
-        if statusMapping[frame.worldMappingStatus] != State.shared.myDeviceState.worldMappingStatus {
-            State.shared.myDeviceState.worldMappingStatus = statusMapping[frame.worldMappingStatus]! 
+        if statusMapping[frame.worldMappingStatus] != State.shared.currentDeviceState.worldMappingStatus {
+            State.shared.currentDeviceState.worldMappingStatus = statusMapping[frame.worldMappingStatus]! 
         }
         /*
          switch frame.worldMappingStatus {
@@ -1331,7 +1314,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                 debugTestTime = Date()
             }
             
-            if State.shared.myDeviceState.arEnabled {
+            if State.shared.currentDeviceState.arEnabled {
                 //DispatchQueue.main.async {
                 let scaleFactor = 0.25
                 let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
@@ -1340,7 +1323,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                         if let i = image {
                             if let scaledImage = UIImage.scale(image: i, by: scaleFactor) {
                                 if let imageData = scaledImage.jpegData(compressionQuality: 0.0) {
-                                    State.shared.myDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
+                                    State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
                                     for sourceDevice in devicesRequiringImageFeed {
                                         //print("Sending image feed from \(Common.getHostDevice()) to \(sourceDevice)")
                                         channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
@@ -1523,7 +1506,7 @@ extension ViewController {
         guard let multipeerSession = multipeerSession else { return false }
         sendMessage("Peer discovered!")
         let sourceDevice = Common.sourceDeviceFromString(deviceName: peer.displayName)
-        State.shared.myDeviceState.deviceP2PConnectedStatus = .waiting
+        State.shared.currentDeviceState.deviceP2PConnectedStatus = .waiting
         if multipeerSession.connectedPeers.count > 5 {
             sendMessage("[WARNING] Max connections reached!")
             return false
@@ -1537,7 +1520,7 @@ extension ViewController {
         connectedSourceDevices.insert(Common.sourceDeviceFromString(deviceName: peer.displayName))
         sendARSessionIDTo(peers: [peer])
         channels.annonceSessionID(arView.session.identifier.uuidString)
-        State.shared.myDeviceState.deviceP2PConnectedStatus = .joined
+        State.shared.currentDeviceState.deviceP2PConnectedStatus = .joined
     }
     
     func peerLeft(_ peer: MCPeerID) {

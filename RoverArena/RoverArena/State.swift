@@ -22,9 +22,6 @@ class State: ObservableObject {
             devicesState[sourceDevice] = DeviceState()
         }
         addObservers()
-        //cancellable = $devicesState.sink { newValue in
-
-        //}
 
     }
 
@@ -61,9 +58,9 @@ class State: ObservableObject {
     }
     
     enum ChannelStatus: String, Encodable, Decodable {
-        case disconnected = "Disconnected"
-        case server = "Server"
-        case consumer = "Consumer"
+        case disconnected = "~"
+        case hub = "Hub"
+        case controller = "Controller"
     }
     
     struct Display: Codable {
@@ -86,28 +83,7 @@ class State: ObservableObject {
         }
         
         var mode: Mode?
-        
-        /*
-        // Decoding init function
-        init(from decoder: Decoder) throws {
-            /*
-            let values = try decoder.container(keyedBy: CodingKeys.self)
-            name = try values.decode(String.self, forKey: .name)
-            age = try values.decode(Int.self, forKey: .age)
-            address = try values.decode(String.self, forKey: .address)
-             */
-        }
-        */
-        
-        /*
-        // Encoding init function
-        init(name: String, age: Int, address: String) {
-            self.name = name
-            self.age = age
-            self.address = address
-        }
-        */
-        
+
         // CodingKeys
         enum CodingKeys: String, CodingKey {
             case mode
@@ -118,6 +94,8 @@ class State: ObservableObject {
     struct DeviceState: Encodable, Decodable, Equatable {
         //let statusMappingToString: [ARFrame.WorldMappingStatus: String] = [.notAvailable: "Not Available", .limited: "Limited", .extending: "Extending", .mapped: "Mapped"]
 
+        var launchDate: Date?
+        
         var refreshUI = true
         
         var sourceDevice: SourceDevice = .none
@@ -155,7 +133,8 @@ class State: ObservableObject {
         init(sourceDevice: SourceDevice? = SourceDevice.none) {
             if let sd = sourceDevice {
                 self.sourceDevice = sd
-                if sourceDevice?.isCurrent() {
+                if sd.isCurrentDevice() {
+                    launchDate = Date()
                     batteryState = EncodableBatteryState(batteryState: UIDevice.current.batteryState)
                     thermalState = EncodableThermalState(thermalState: ProcessInfo.processInfo.thermalState)
                     
@@ -164,85 +143,44 @@ class State: ObservableObject {
         }
     }
     
-    // Used for updating the UI, includes state from all devices including the current device
-    // The current device reflected here is coming from hub rather than the local version
-    // so could be slightly stale
-    public struct GlobalState: Encodable, Decodable {
-
-        /*
-        public var myState: DeviceState? {
-            get {
-                if let ds = devicesState[Common.getHostDevice()]{
-                    return ds
-                } else {
-                    return nil
-                }
-            }
-            set {
-                devicesState[Common.getHostDevice()] = newValue
-            }
-        }
-        
-        public mutating func storeDeviceState(deviceState: DeviceState) {
-            devicesState[deviceState.sourceDevice] = deviceState
-        }
-         */
-
-    }
-
-    
-    var globalState = GlobalState() {
-        didSet {
-            
-            // Update UI here
-            
-        }
-    }
-    
     var launchBrightness = UIScreen.main.brightness
-    
     var operationalBrightness = UIScreen.main.brightness {
         didSet {
             UIScreen.main.brightness = operationalBrightness
         }
     }
 
-    @Published var devicesState: [SourceDevice: DeviceState] = [:]
     var lastSentDeviceState = DeviceState()
-    @Published var myDeviceState = DeviceState(sourceDevice: Common.currentDevice()) {
+    @Published var devicesState: [SourceDevice: DeviceState] = [:]
+    @Published var currentDeviceState = DeviceState(sourceDevice: Common.currentDevice()) {
         didSet {
-            //if myDeviceState != lastSentDeviceState {
+
                 if Common.isHub() {
                     Channels.shared.broadcastHubDeviceStateToAllDevices()
                 } else {
                     Channels.shared.reportDeviceStatusToHubDevice()
                 }
-                lastSentDeviceState = myDeviceState
+                lastSentDeviceState = currentDeviceState
             
             if UIDevice.current.isBatteryMonitoringEnabled == false {
                 UIDevice.current.isBatteryMonitoringEnabled = true
                 usleep(500000)
                 print("Battery: \(UIDevice.current.batteryLevel)")
-                myDeviceState.batteryLevel = UIDevice.current.batteryLevel
-                myDeviceState.batteryState.batteryState = UIDevice.current.batteryState
-                print("New state: \(myDeviceState.batteryState.batteryState)")
+                currentDeviceState.batteryLevel = UIDevice.current.batteryLevel
+                currentDeviceState.batteryState.batteryState = UIDevice.current.batteryState
+                print("New state: \(currentDeviceState.batteryState.batteryState)")
                 print("")
             }
-            if devicesRequiringImageFeed().count > 0 {
-                //myDeviceState.image
-            }
-            
-            devicesState[myDeviceState.sourceDevice] = myDeviceState
-           // }
+
+            devicesState[currentDeviceState.sourceDevice] = currentDeviceState
+
         }
     }
   
-    public func resetMyDeviceState() {
-        myDeviceState = DeviceState(sourceDevice: Common.currentDevice())
+    public func resetCurrentDeviceState() {
+        currentDeviceState = DeviceState(sourceDevice: Common.currentDevice())
     }
 
-    //var localDeviceState: DeviceState = DeviceState()
-    
     public func processIncomingDeviceState(data: Data?) {
         
         if let d = data {
@@ -329,7 +267,7 @@ class State: ObservableObject {
                         forName: ProcessInfo.thermalStateDidChangeNotification,
                          object: nil,
                           queue: nil) { notification in
-                              self.myDeviceState.thermalState = EncodableThermalState(thermalState: ProcessInfo.processInfo.thermalState)
+                              self.currentDeviceState.thermalState = EncodableThermalState(thermalState: ProcessInfo.processInfo.thermalState)
                               //Channels.shared.reportDeviceStatusToHubDevice()
         }
         
@@ -337,14 +275,14 @@ class State: ObservableObject {
                         forName: UIDevice.batteryLevelDidChangeNotification,
                          object: nil,
                           queue: nil) { notification in
-                              self.myDeviceState.batteryLevel = UIDevice.current.batteryLevel
+                              self.currentDeviceState.batteryLevel = UIDevice.current.batteryLevel
         }
         
         let _ = NotificationCenter.default.addObserver(
                         forName: UIDevice.batteryStateDidChangeNotification,
                          object: nil,
                           queue: nil) { notification in
-                              self.myDeviceState.batteryState = EncodableBatteryState(batteryState: UIDevice.current.batteryState)
+                              self.currentDeviceState.batteryState = EncodableBatteryState(batteryState: UIDevice.current.batteryState)
         }
 
     }

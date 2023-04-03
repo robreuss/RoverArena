@@ -63,7 +63,7 @@ class DeviceStatusViewLabel: UILabel {
         if blink {
             UIView.animate(withDuration: 0.7, delay: 0.0, options: [.autoreverse, .repeat], animations: {
                 self.alpha = 0.7
-            }, completion: nil)
+            }, completion: { _ in self.alpha = 1.0 })
         } else {
             self.layer.removeAllAnimations()
             alpha = 1.0
@@ -74,28 +74,9 @@ class DeviceStatusViewLabel: UILabel {
 
 class DeviceStatusView: UIView {
     
-    /*
-    var state = SystemState() {
-        didSet {
-            
-            for sourceDevice in devicesState.keys {
-                
-                let deviceState = devicesState[sourceDevice]
-                
-                // Channel
-                let label = channelStatusLabels[sourceDevice]
-                label?.text = deviceState?.channelStatus.rawValue
-                
-            }
-            
-        }
-    }
-    */
-
-    
     let leftMargin: CGFloat = 4.0
     let rightMargin: CGFloat = 4.0
-    let topMargin: CGFloat = 4.0
+    let topMargin: CGFloat = 2.0
     let rowSpacing: CGFloat = 1.0
     let columnSpacing: CGFloat = 1.0
     let rowHeight: CGFloat = 25.0
@@ -104,6 +85,7 @@ class DeviceStatusView: UIView {
     
 
     var deviceNameLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
+    var launchDateLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var channelStatusLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var thermalStateLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var batteryStateLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
@@ -122,6 +104,7 @@ class DeviceStatusView: UIView {
     var devices: [SourceDevice] = []
     
     var cancellable: AnyCancellable?
+
 
     /*
     let cancellable = SystemState.shared.$devicesState.sink { newValue in
@@ -160,15 +143,41 @@ class DeviceStatusView: UIView {
                 
                 if let sourceDeviceState = State.shared.devicesState[sourceDevice] {
                     
+        
+                    // Uptime
+                    if let launchDateLabel = self.launchDateLabels[sourceDevice] {
+                        
+                        if let launchDate = sourceDeviceState.launchDate {
+                            let elapsedSeconds = round(abs(launchDate.timeIntervalSinceNow))
+                            
+                            let hours = Int(elapsedSeconds / 3600)
+                            let minutes = Int(elapsedSeconds.truncatingRemainder(dividingBy: 3600) / 60)
+                            let seconds = Int(elapsedSeconds.truncatingRemainder(dividingBy: 60))
+                            /*
+                             let seconds = abs(State.shared.currentDeviceState.launchDate.timeIntervalSinceNow)
+                             let minutes = abs(Int(seconds / 60))
+                             let remainingSeconds = Int(seconds - Double(minutes * 60))
+                             let timeString = String(format: "%d:%04.1f", minutes, remainingSeconds)
+                             //let timeString = String(format: "%d:%04.1f", minutes, remainingSeconds)
+                             */
+                            
+                            let timeString = String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+                            
+                            launchDateLabel.text = "\(timeString)"
+                            launchDateLabel.backgroundColor = darkGreen
+                        }
+
+                    }
+                    
                     // Channel
                     if let channelStatusLabel = self.channelStatusLabels[sourceDevice] {
                         channelStatusLabel.text = sourceDeviceState.channelStatus.rawValue
                         switch sourceDeviceState.channelStatus {
                         case .disconnected:
                             channelStatusLabel.backgroundColor = darkGray
-                        case .consumer:
+                        case .controller:
                             channelStatusLabel.backgroundColor = darkGreen
-                        case .server:
+                        case .hub:
                             channelStatusLabel.backgroundColor = darkGreen
                         }
                     }
@@ -188,18 +197,18 @@ class DeviceStatusView: UIView {
                             thermalStateLabel.blink = false
                         case .serious:
                             thermalStateString = "Serious"
-                            thermalStateLabel.backgroundColor = darkRed
+                            thermalStateLabel.backgroundColor = darkYellow
                             thermalStateLabel.blink = false
                         case .critical:
                             thermalStateString = "Critical"
                             thermalStateLabel.backgroundColor = darkRed
                             thermalStateLabel.blink = true
                         @unknown default:
-                            thermalStateString = "Unknown"
+                            thermalStateString = "~"
                             thermalStateLabel.backgroundColor = darkGray
                         }
                         if sourceDeviceState.channelStatus == .disconnected {
-                            thermalStateString = "Unknown"
+                            thermalStateString = "~"
                             thermalStateLabel.backgroundColor = darkGray
                             thermalStateLabel.blink = false
                         }
@@ -239,7 +248,7 @@ class DeviceStatusView: UIView {
                         default:
                             batteryLevelLabel.backgroundColor = darkGray
                             batteryLevelLabel.blink = false
-                            batteryLevelLabel.text = "Unknown"
+                            batteryLevelLabel.text = "~"
                         }
                         
                         batteryLevelColor = batteryLevelLabel.backgroundColor!
@@ -252,27 +261,27 @@ class DeviceStatusView: UIView {
                         
                         switch sourceDeviceState.batteryState.batteryState {
                         case .unknown:
-                            batteryStateString = "Unknown"
+                            batteryStateString = "~"
                             batteryStateLabel.backgroundColor = darkGray
                             batteryStateLabel.blink = false
                         case .unplugged:
-                            batteryStateString = "Unplugged"
+                            batteryStateString = "Battery"
                             batteryStateLabel.backgroundColor = batteryLevelColor
                             batteryStateLabel.blink = false
                         case .charging:
-                            batteryStateString = "Charging"
+                            batteryStateString = "Charger"
                             batteryStateLabel.backgroundColor = batteryLevelColor
                             batteryStateLabel.blink = false
                         case .full:
-                            batteryStateString = "Full"
+                            batteryStateString = "Charger"
                             batteryStateLabel.backgroundColor = darkGreen
                             batteryStateLabel.blink = false
                         @unknown default:
-                            batteryStateString = "Unknown"
+                            batteryStateString = "~"
                             batteryStateLabel.backgroundColor = darkGray
                         }
                         if sourceDeviceState.channelStatus == .disconnected && !sourceDevice.isCurrentDevice() {
-                            batteryStateString = "Unknown"
+                            batteryStateString = "~"
                             batteryStateLabel.backgroundColor = darkGray
                             batteryStateLabel.blink = false
                         }
@@ -307,7 +316,7 @@ class DeviceStatusView: UIView {
                         default:
                             fpsLevelLabel.backgroundColor = darkGray
                             fpsLevelLabel.blink = false
-                            fpsLevelLabel.text = "0.0"
+                            fpsLevelLabel.text = "~"
                         }
                         
                     }
@@ -324,9 +333,13 @@ class DeviceStatusView: UIView {
                             arEnabledLabel.backgroundColor = darkRed
                         }
                         
+                        if sourceDeviceState.thermalState.thermalState == .serious {
+                            arEnabledLabel.backgroundColor = darkYellow
+                        }
+                        
                         if !sourceDeviceState.sourceDevice.isCurrentDevice() && sourceDeviceState.channelStatus == .disconnected {
                             arEnabledLabel.backgroundColor = darkGray
-                            arEnabledLabel.text = "Disconnected"
+                            arEnabledLabel.text = "~"
                         }
                         
                     }
@@ -344,7 +357,7 @@ class DeviceStatusView: UIView {
                         case .unknown:
                             p2pStatusLabel.backgroundColor = darkGray
                             p2pStatusLabel.blink = false
-                            p2pStatusLabel.text = "Unknown"
+                            p2pStatusLabel.text = "~"
                             
                         case .joined:
                             p2pStatusLabel.backgroundColor = darkGreen
@@ -359,7 +372,7 @@ class DeviceStatusView: UIView {
                         case .disconnected:
                             p2pStatusLabel.backgroundColor = darkRed
                             p2pStatusLabel.blink = true
-                            p2pStatusLabel.text = "Disconnected"
+                            p2pStatusLabel.text = "~"
                             
                         }
                         
@@ -373,11 +386,18 @@ class DeviceStatusView: UIView {
         
     }
     
-    private func addColumn(header: String, defaults: [String], width: CGFloat) -> [SourceDevice: DeviceStatusViewLabel] {
+    private func addColumn(header: String, defaults: [String], sampleTextForWidth: String) -> [SourceDevice: DeviceStatusViewLabel] {
         
-        let headerLabel = DeviceStatusViewLabel(frame: CGRectMake(xCursor, 0.0, width, rowHeight))
-        headerLabel.text = header
+        let headerLabel = DeviceStatusViewLabel(frame: CGRectMake(xCursor, 0.0, 1.0, rowHeight))
+        headerLabel.text = sampleTextForWidth
         addSubview(headerLabel)
+        
+        let columnPadding = 18.0
+        //let rowPadding = 3.0
+        let size = headerLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: rowHeight))
+        let columnWidth = size.width + columnPadding
+        headerLabel.frame = CGRectMake(xCursor, 0.0, columnWidth, rowHeight)
+        headerLabel.text = header
         
         var labelDictionary: [SourceDevice: DeviceStatusViewLabel] = [:]
         for device in devices {
@@ -385,7 +405,7 @@ class DeviceStatusView: UIView {
                 
                 let yPosition = topMargin + (rowHeight + rowSpacing) * (CGFloat(index) + 1.0) // Plus one for the header
                 
-                let label = DeviceStatusViewLabel(frame: CGRectMake(xCursor, yPosition, width, rowHeight))
+                let label = DeviceStatusViewLabel(frame: CGRectMake(xCursor, yPosition, columnWidth, rowHeight))
                 addSubview(label)
                 
                 labelDictionary[device] = label
@@ -400,14 +420,17 @@ class DeviceStatusView: UIView {
                
             }
         }
-        xCursor = xCursor + width + columnSpacing
+        xCursor = xCursor + columnWidth + columnSpacing
         return labelDictionary
     }
     
     private func setupViews() {
         
-        let statusLightWidth: CGFloat = 90.0
-        let deviceNameWidth: CGFloat = 175.0
+        
+        let _ = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+            self.refreshViews()
+        }
+
 
         devices = hubDevice + [.iPhone14ProMax, .iPhone12Pro, .iPhoneXSMax]
         //devices = hubDevice + tripodDevice + controllers
@@ -418,96 +441,27 @@ class DeviceStatusView: UIView {
         backgroundColor = UIColor.black
         rowWidth = self.bounds.width - (rightMargin + leftMargin)
 
-        var totalHeight = (rowHeight + rowSpacing) * CGFloat(Common.deviceSet.count) + topMargin + topMargin
+        let totalHeight = (rowHeight + rowSpacing) * CGFloat(Common.deviceSet.count) + topMargin + topMargin
         
-        deviceNameLabels = addColumn(header: "Device", defaults: deviceNames, width: deviceNameWidth)
-        channelStatusLabels = addColumn(header: "Channel", defaults: ["Disconnected"], width: statusLightWidth)
-        thermalStateLabels = addColumn(header: "Thermal", defaults: ["Disconnected"], width: statusLightWidth)
-        batteryStateLabels = addColumn(header: "Power State", defaults: ["Disconnected"], width: statusLightWidth)
-        batteryLevelLabels = addColumn(header: "Power Level", defaults: ["Disconnected"], width: statusLightWidth)
-        imageFeedStatusLabels = addColumn(header: "Video", defaults: ["Disabled"], width: statusLightWidth)
-        p2pStatusLabels = addColumn(header: "P2P", defaults: ["Disconnected"], width: statusLightWidth)
-        mappingStatusLabels = addColumn(header: "Mapping", defaults: ["None"], width: statusLightWidth)
+        deviceNameLabels = addColumn(header: "Device", defaults: deviceNames, sampleTextForWidth: "iPhone14ProMax")
+        launchDateLabels = addColumn(header: "Uptime", defaults: ["~"], sampleTextForWidth: "Runtime")
+        channelStatusLabels = addColumn(header: "Channel", defaults: ["~"], sampleTextForWidth: "Controller")
+        thermalStateLabels = addColumn(header: "Thermal", defaults: ["~"], sampleTextForWidth: "Nominal")
+        
+        batteryLevelLabels = addColumn(header: "Power", defaults: ["~"], sampleTextForWidth: "Power")
+        batteryStateLabels = addColumn(header: "Source", defaults: ["~"], sampleTextForWidth: "Charging")
+
+        imageFeedStatusLabels = addColumn(header: "Video", defaults: ["~"], sampleTextForWidth: "Feeding")
+        p2pStatusLabels = addColumn(header: "P2P", defaults: ["~"], sampleTextForWidth: "Connected")
+        mappingStatusLabels = addColumn(header: "Mapping", defaults: ["~"], sampleTextForWidth: "Fully mapped")
         //arStatusLabels = addColumn(header: "World", defaults: ["Disconnected"], width: statusLightWidth)
-        arEnabledLabels = addColumn(header: "Rendering", defaults: ["No"], width: statusLightWidth)
-        fpsLabels = addColumn(header: "FPS", defaults: ["0.0"], width: statusLightWidth)
-        worldPositionLabels = addColumn(header: "Position", defaults: ["Disconnected"], width: statusLightWidth)
+        arEnabledLabels = addColumn(header: "Rendering", defaults: ["~"], sampleTextForWidth: "Rendering")
+        fpsLabels = addColumn(header: "FPS", defaults: ["0.0"], sampleTextForWidth: "FPS")
+        worldPositionLabels = addColumn(header: "Position", defaults: ["~"], sampleTextForWidth: "Position")
 
-
-        /*
-         for device in devices {
-         if let index = devices.firstIndex(of: device) {
-         
-         let yPosition = topMargin + (rowHeight + rowSpacing) * CGFloat(index)
-         let statusLightView = UILabel(frame: CGRectMake(leftMargin, yPosition, statusLightWidth, rowHeight))
-         statusLightView.backgroundColor = darkRed
-         statusLightView.textColor = grayWhite
-         statusLightView.text = "Unknown"
-         statusLightView.textAlignment = .center
-         statusLightView.font = UIFont.systemFont(ofSize: 12)
-         addSubview(statusLightView)
-         p2pLabels.append(statusLightView)
-         
-         let deviceNameLabel = UILabel(frame: CGRectMake(leftMargin + statusLightWidth + rowSpacing, yPosition, deviceNameWidth, rowHeight))
-         deviceNameLabel.backgroundColor = UIColor.darkGray
-         deviceNameLabel.textColor = grayWhite
-         deviceNameLabel.font = UIFont.systemFont(ofSize: 12)
-         deviceNameLabel.adjustsFontSizeToFitWidth = true
-         addSubview(deviceNameLabel)
-         
-         if let deviceRole = Common.shared.deviceRoles[device]?.rawValue {
-         deviceNameLabel.text = "    \(device.rawValue) (\(deviceRole))"
-         }
-         
-         
-         let deviceRoleLabel = UILabel(frame: CGRectMake(leftMargin + statusLightWidth +  rowSpacing + deviceNameWidth + rowSpacing, yPosition, deviceRoleWidth, rowHeight))
-         deviceRoleLabel.backgroundColor = UIColor.darkGray
-         deviceRoleLabel.textColor = grayWhite
-         deviceRoleLabel.font = UIFont.systemFont(ofSize: 12)
-         deviceRoleLabel.adjustsFontSizeToFitWidth = true
-         //addSubview(deviceRoleLabel)
-         
-         if let deviceRole = Common.shared.deviceRoles[device]?.rawValue {
-         deviceRoleLabel.text = "  \(deviceRole)"
-         }
-         
-         
-         }
-         */
         frame = CGRectMake(frame.origin.x, frame.origin.y, frame.size.width, totalHeight)
         
     }
-    
-    
-    public func addDeviceList() {
-        
-        
-    }
-    
-    /*
-    public func setDeviceStatus(device: SourceDevice, status: SystemState.DeviceP2PConnectedStatus) {
-        
-        if let index = devices.firstIndex(of: device) {
-            
-            if let statusLightView = p2pStatusLabels[device] {
 
-                statusLightView.text = "\(status.rawValue)"
-                
-                switch status {
-                case .disconnected:
-                    statusLightView.backgroundColor = darkRed
-                case .connected:
-                    statusLightView.backgroundColor = darkYellow
-                case .waiting:
-                    statusLightView.backgroundColor = darkYellow
-                case .joined:
-                    statusLightView.backgroundColor = darkGreen
-                case .unknown:
-                    statusLightView.backgroundColor = UIColor.clear
-                }
-            }
-        }
-    }
-     */
     
 }

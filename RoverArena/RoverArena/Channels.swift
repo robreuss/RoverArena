@@ -97,18 +97,7 @@ class Channels {
     var imageAlreadySent = true // false will break this
     
     init() {
-        
-        
-        // Avoids issues with unwrapping
-        /*
-         for contentType in ContentType.allCases {
-         for sourceDevice in SourceDevice.allCases {
-         serverElements[contentType] = [sourceDevice: Element()]
-         consumerElements[contentType] = [sourceDevice: Element()]
-         }
-         }
-         */
-        
+
         for contentType in ContentType.allCases {
             handlers[contentType] = [:]
             for sourceDevice in SourceDevice.allCases {
@@ -116,15 +105,7 @@ class Channels {
             }
         }
     }
-    
-    // Broadcast the state of the world to all consumer devices
-    func broadcastWorldState() {
-        let globalStateJSON = try! jsonEncoder.encode(State.shared.globalState)
-        for device in consumerDevices.keys {
-            sendCommand(type: .worldStatusUpdate, floatValue: 0.0, pointValue: CGPointZero, stringValue: "", boolValue: false, dataValue: globalStateJSON, toDevice: device)
-        }
-    }
-    
+
     
     func deviceConnected(device: Device) {
         
@@ -145,46 +126,12 @@ class Channels {
         }
         
     }
-    
-    /*
-     public func setCommandHandler(_ handler: @escaping CommandHandler, forDevice: SourceDevice) {
-     
-     commandHandlers[forDevice] = handler
-     
-     }
-     */
+
     public func setHandler(_ handler: @escaping Handler<Any>, forContentType: ContentType, sourceDevice: SourceDevice) {
         logDebug("Setting handler for content type \(forContentType) for device \(sourceDevice)")
         handlers[forContentType]?[sourceDevice] = handler
     }
-    /*
-     private func processDataFromDevice(_ device: SourceDevice, type: ContentType, element: Element) {
-     
-     guard let h = handlers[device] else { return }
-     
-     if let data = element.dataValue {
-     if let command = try? jsonDecoder.decode(Command.self, from: data) {
-     h(device, command)
-     }
-     }
-     }
-     */
-    
-    /* With return value...
-     private func executeHandler<T: Decodable>(sourceDevice: SourceDevice, contentType: ContentType, dataType: T.Type, element: Element) -> T? {
-     logDebug("Executing handler for content type \(contentType) for device \(sourceDevice)")
-     if let contentTypeHandlers = handlers[contentType] {
-     if let h = contentTypeHandlers[sourceDevice] {
-     if let data = element.dataValue {
-     let decodedObject = try! jsonDecoder.decode(dataType.self, from: data)
-     h(sourceDevice, decodedObject)
-     return decodedObject
-     }
-     }
-     }
-     return nil
-     }
-     */
+
     
     private func executeHandler<T: Decodable>(sourceDevice: SourceDevice, contentType: ContentType, dataType: T.Type, element: Element) {
         if contentType != .image { logDebug("Executing handler for content type \(contentType) for device \(sourceDevice)") }
@@ -204,8 +151,7 @@ class Channels {
     func reportDeviceStatusToHubDevice() {
         if !Common.isHub() {
             do {
-                //let encodedDeviceState = try self.jsonEncoder.encode(SystemState.shared.myDeviceState)
-                sendContentTypeToSourceDevice(Common.shared.hubDevice(), toServer: true, type: ContentType.state, data: State.shared.myDeviceState)
+                sendContentTypeToSourceDevice(Common.shared.hubDevice(), toServer: true, type: ContentType.state, data: State.shared.currentDeviceState)
             } catch {
                 logError("Recieved encoding error with DeviceState")
             }
@@ -215,7 +161,7 @@ class Channels {
     
     public func sendContentTypeToSourceDevice<T>(_ sourceDevice: SourceDevice, toServer: Bool, type: ContentType, data: T) where T : Encodable {
         
-        if State.shared.myDeviceState.channelStatus != .disconnected {
+        if State.shared.currentDeviceState.channelStatus != .disconnected {
             if !toServer {
                 if let device = consumerDevices[sourceDevice], let element = serverElements[type] {
                     sendUsingDevice(device, element)
@@ -230,10 +176,7 @@ class Channels {
         
         
         func sendUsingDevice(_ device: Device, _ element: Element) {
-            
-            //print("Consumer elements for type \(type) is \(consumerElements)")
-            
-            //if let element = serverElements[sourceDevice] {
+
             do {
                 if type != .image {
                     let jsonData = try self.jsonEncoder.encode(data)
@@ -255,8 +198,7 @@ class Channels {
         }
         
     }
-    //  as! T.Type
-    
+
     func processObjectIncomingFromDevice(sourceDevice: SourceDevice, contentType: ContentType, element: Element) {
         
         if contentType != .image { logDebug("Processing incoming object from device \(sourceDevice) of content type \(contentType)") }
@@ -300,22 +242,9 @@ class Channels {
         
         
     }
-    
-    /*
-     private func processCollaborationFromDevice(_ device: SourceDevice, element: Element) {
-     
-     guard let h = collaborationHandlers[device] else { return }
-     
-     if let data = element.dataValue {
-     h(device, data)
-     }
-     
-     }
-     */
-    
-    
+
     func annonceSessionID(_ sessionID: String) {
-        State.shared.myDeviceState.sessionIdentifier = sessionID
+        State.shared.currentDeviceState.sessionIdentifier = sessionID
     }
     
     public func setupConsumerOfServerDevice(_ sourceDevice: SourceDevice) {
@@ -357,7 +286,7 @@ class Channels {
             device.events.connected.handler = { [self] (device) in
                 
                 if sourceDevice == Common.shared.hubDevice() {
-                    State.shared.myDeviceState.channelStatus = .consumer
+                    State.shared.currentDeviceState.channelStatus = .controller
                 }
                 
                 for contentType in ContentType.allCases {
@@ -374,29 +303,12 @@ class Channels {
                     }
                     
                     self.consumerElements[contentType] = element
-                    
-                    /*
-                     if let elements = self.elementsConsumer[contentType] {
-                     let element = device.attachElement(Element(identifier: contentType.rawValue, displayName: "Content Type id #\(contentType)", proto: .tcp, dataType: .Data))
-                     /*
-                      element.handler = {
-                      print("Handler for consumer element goes here")
-                      }
-                      elements[serviceDevice] = element
-                      */
-                     }
-                     */
+
                     
                 }
-
                 
-                /*
-                 self.consumerImageElements[serviceDevice]?.handler = { element, device in
-                 
-                 let device = Common.sourceDeviceFromString(deviceName: device.displayName)
-                 self.processImageFromDevice(device, element: element)
-                 }
-                 */
+                State.shared.currentDeviceState.refreshUI = true
+
             }
             
             device.connect()
@@ -423,7 +335,7 @@ class Channels {
             let sourceDevice = Common.sourceDeviceFromString(deviceName: device.displayName)
             self.consumerDevices[sourceDevice] = nil
             if self.consumerDevices.count == 0 {
-                State.shared.myDeviceState.channelStatus = .disconnected
+                State.shared.currentDeviceState.channelStatus = .disconnected
             }
             State.shared.devicesState[sourceDevice] = State.DeviceState(sourceDevice: sourceDevice)
             // SystemState.shared.devicesState[sourceDevice]?.channelStatus = .disconnected
@@ -435,7 +347,7 @@ class Channels {
         serverController.service.events.deviceConnected.handler = {  _, device in
             
             if Common.currentDevice() == Common.shared.hubDevice() {
-                State.shared.myDeviceState.channelStatus = .server
+                State.shared.currentDeviceState.channelStatus = .hub
             }
             let clientDevice = device as! ClientDevice
             
@@ -477,7 +389,7 @@ class Channels {
     public func broadcastHubDeviceStateToAllDevices() {
         
         for sourceDevice in consumerDevices.keys {
-            sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .state, data: State.shared.myDeviceState)
+            sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .state, data: State.shared.currentDeviceState)
         }
     }
     
