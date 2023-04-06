@@ -17,16 +17,16 @@ import AVFoundation
 import CoreGraphics
 
 class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDelegate, WorldScanDelegate, AVCaptureFileOutputRecordingDelegate {
+  
     
     var cancellable: AnyCancellable?
 
-    
     var multipeerSession: MultipeerSession?
     var peerSessionIDs = [MCPeerID: String]()
     
     var sessionIDObservation: NSKeyValueObservation?
     
-    @IBOutlet weak var arView: ARView!
+    @IBOutlet weak var arView: CustomARView!
     
     @IBOutlet weak var coordinates: UILabel!
     
@@ -37,7 +37,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     @IBOutlet weak var deviceStatusView: DeviceStatusView!
     
     @IBOutlet var topView: UIView!
-    
+
     var videoStreamViewOnboard: VideoStreamView!
     var videoStreamViewController: VideoStreamView!
     
@@ -67,27 +67,27 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     func toggleVideoSourceDisplaying() {
         
         //if UIDevice.current.userInterfaceIdiom == .phone {
-            if self.deviceRole != .hub {
-                if State.shared.currentDeviceState.videoSourceDisplaying == .localAR {
-                    
-                    arView.isHidden = true
-                    videoStreamViewOnboard.isHidden = false
-                    State.shared.currentDeviceState.videoSourceDisplaying = .imageFeed
-                    State.shared.currentDeviceState.requestedImageFeedSources = [Common.shared.hubDevice()]
-                    arView.session.pause()
-                    
-                } else if State.shared.currentDeviceState.videoSourceDisplaying == .imageFeed {
-                    
-                    arView.isHidden = false
-                    videoStreamViewOnboard.isHidden = true
-                    State.shared.currentDeviceState.videoSourceDisplaying = .localAR
-                    State.shared.currentDeviceState.requestedImageFeedSources = []
-                    if let config = arConfiguration {
-                        arView.session.run(config)
-                    }
+        if self.deviceRole != .hub {
+            if State.shared.currentDeviceState.videoSourceDisplaying == .localAR {
+                
+                arView.isHidden = true
+                videoStreamViewOnboard.isHidden = false
+                State.shared.currentDeviceState.videoSourceDisplaying = .imageFeed
+                State.shared.currentDeviceState.requestedImageFeedSources = [Common.shared.hubDevice()]
+                arView.session.pause()
+                
+            } else if State.shared.currentDeviceState.videoSourceDisplaying == .imageFeed {
+                
+                arView.isHidden = false
+                videoStreamViewOnboard.isHidden = true
+                State.shared.currentDeviceState.videoSourceDisplaying = .localAR
+                State.shared.currentDeviceState.requestedImageFeedSources = []
+                if let config = arConfiguration {
+                    arView.session.run(config)
                 }
             }
-            Channels.shared.reportDeviceStatusToHubDevice()
+        }
+        Channels.shared.reportDeviceStatusToHubDevice()
         //}
         
     }
@@ -97,12 +97,14 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     
     var deviceRole: DeviceRole = .hub
     
-    var hubDevice: SourceDevice = .iPhone12Pro
+    var hubDevice: SourceDevice {
+        return Common.shared.unwrappedDeviceType(.hub)
+    }
     
     /*
-    var tripodDevice: SourceDevice {
-        return common.unwrappedDeviceType(.tripod)
-    }
+     var tripodDevice: SourceDevice {
+     return common.unwrappedDeviceType(.tripod)
+     }
      */
     // var peerSessionIDs = [SourceDevice: String]()
     
@@ -134,7 +136,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         channels.setHandler(handler, forContentType: .image, sourceDevice: sourceDevice)
         
     }
-
+    
     /* Back from using EC for collaboration
      func setupCollaborators() {
      
@@ -146,37 +148,46 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
      }
      */
     
+    override var prefersStatusBarHidden: Bool {
+        return true
+    }
+    
+    override var prefersHomeIndicatorAutoHidden: Bool {
+        return true
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        runARSession()
+
+        State.shared.operationalBrightness = 0.5
+        arView.session.delegate = self
+        arView.automaticallyConfigureSession = false
+
+        runFullARSession()
         
         cancellable = State.shared.$currentDeviceState.sink(receiveValue: { newValue in
-                            DispatchQueue.main.async {
-                                switch ProcessInfo.processInfo.thermalState {
-                                case .critical:
-                                    self.pauseARSession()
-                                case .fair,.nominal,.serious:
-                                    self.runARSession()
-                                }
-                            }
-                        })
+            DispatchQueue.main.async {
+                switch ProcessInfo.processInfo.thermalState {
+                case .critical:
+                    self.positionalARSession()
+                case .fair,.nominal,.serious:
+                    self.runFullARSession()
+                }
+            }
+        })
         usleep(700000) // Prevent coming up with unknown host
         
         let c = common.deviceRoles.filter { $0.value == .controller }
         controllerDevices = Set(c.keys)
         channels.controllerDevices = controllerDevices
         
-        hubDevice = common.unwrappedDeviceType(.hub)
-        
         arView.session.delegate = self
         
         videoStreamViewOnboard = VideoStreamView(frame: CGRectMake(0.0, 0.0, view.bounds.size.width, view.bounds.size.height))
-        videoStreamViewOnboard.backgroundColor = UIColor.purple
         videoStreamViewOnboard.isHidden = true
         topView.addSubview(videoStreamViewOnboard)
-
+        
+        topView.backgroundColor = darkBlue
         
         UIApplication.shared.isIdleTimerDisabled = true
         
@@ -263,7 +274,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             gameController.setupAsRemoteServer()
             setupLocalGameControllerHandlers()
             gameController.discoverGameController()
-
+            
             
             
             commandHandler = {  [self]  sourceDevice, co in
@@ -292,38 +303,53 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             
         case .hub:
             
+            let margins: CGFloat = 10.0
             let videoStreamViewWidth: CGFloat = 633.0
             let videoStreamViewHeight: CGFloat = 293.0
             
             videoStreamViewOnboard.frame = CGRectMake(0.0, 0.0, videoStreamViewWidth, videoStreamViewHeight)
             videoStreamViewOnboard.isHidden = false
-            videoStreamViewOnboard.backgroundColor = UIColor.blue
             videoStreamViewOnboard.translatesAutoresizingMaskIntoConstraints = false // This is necessary to enable auto layout
             NSLayoutConstraint.activate([
-                videoStreamViewOnboard.leadingAnchor.constraint(equalTo: topView.leadingAnchor, constant: 20),
-                videoStreamViewOnboard.topAnchor.constraint(equalTo: topView.topAnchor, constant: 50),
+                videoStreamViewOnboard.leadingAnchor.constraint(equalTo: topView.leadingAnchor, constant: self.view.bounds.width - videoStreamViewWidth - margins),
+                videoStreamViewOnboard.topAnchor.constraint(equalTo: topView.topAnchor, constant: screenEdgeMargins),
                 videoStreamViewOnboard.widthAnchor.constraint(equalToConstant: videoStreamViewWidth),
                 videoStreamViewOnboard.heightAnchor.constraint(equalToConstant: videoStreamViewHeight)
             ])
-
+            
+            videoStreamViewOnboard.videoSourceDevice = .iPhone12Pro
+            
             videoStreamViewController = VideoStreamView(frame: CGRectMake(0.0, videoStreamViewHeight + 10.0, videoStreamViewWidth, videoStreamViewHeight))
-            videoStreamViewController.backgroundColor = UIColor.red
             videoStreamViewController.isHidden = false
             topView.addSubview(videoStreamViewController)
             topView.bringSubviewToFront(videoStreamViewController)
             
             videoStreamViewController.translatesAutoresizingMaskIntoConstraints = false // This is necessary to enable auto layout
             NSLayoutConstraint.activate([
-                videoStreamViewController.leadingAnchor.constraint(equalTo: topView.leadingAnchor, constant: 20),
-                videoStreamViewController.topAnchor.constraint(equalTo: videoStreamViewOnboard.bottomAnchor, constant: 50),
+                videoStreamViewController.leadingAnchor.constraint(equalTo: topView.leadingAnchor, constant: self.view.bounds.width - videoStreamViewWidth - margins),
+                videoStreamViewController.topAnchor.constraint(equalTo: videoStreamViewOnboard.bottomAnchor, constant: screenEdgeMargins),
                 videoStreamViewController.widthAnchor.constraint(equalToConstant: videoStreamViewWidth),
                 videoStreamViewController.heightAnchor.constraint(equalToConstant: videoStreamViewHeight)
             ])
+            videoStreamViewController.videoSourceDevice = .iPhone14ProMax
+            
             channels.setupConsumerOfServerDevice(.iPhone14ProMax)
             setupImageHandlerFromSourceDevice(.iPhone14ProMax, videoStreamViewController)
-
+            
             channels.setupConsumerOfServerDevice(hubDevice)
             setupImageHandlerFromSourceDevice(hubDevice, videoStreamViewOnboard)
+            
+            arView.removeFromSuperview()
+            topView.addSubview(arView)
+            arView.frame = CGRectMake(0.0, 0.0, view.bounds.size.width, view.bounds.size.height)
+            arView.translatesAutoresizingMaskIntoConstraints = false // This is necessary to enable auto layout
+            NSLayoutConstraint.activate([
+                arView.leadingAnchor.constraint(equalTo: topView.leadingAnchor, constant: screenEdgeMargins),
+                arView.topAnchor.constraint(equalTo: topView.topAnchor, constant: screenEdgeMargins),
+                arView.widthAnchor.constraint(equalToConstant: videoStreamViewWidth),
+                arView.heightAnchor.constraint(equalToConstant: videoStreamViewHeight)
+            ])
+            
             
             commandHandler = {  [self]  sourceDevice, co in
                 
@@ -346,13 +372,13 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             
             initDeviceStatusView()
             initCommandButtonsViews()
-
-            State.shared.currentDeviceState.requestedImageFeedSources = [hubDevice, .iPhone14ProMax]
-
+            
+            State.shared.currentDeviceState.requestedImageFeedSources = [.iPhone12Pro, .iPhone14ProMax]
+            
             //imageView.autoresizingMask = [.flexibleRightMargin, .flexibleBottomMargin]
             //imageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
-
-        // case .hub: -> Used to be just hub/onboard
+            
+            // case .hub: -> Used to be just hub/onboard
             
             RoverMotors.shared.connectRoverMotors()
             RoverMotors.shared.accelerationCurve = 0.2
@@ -382,10 +408,10 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                         self.continueTravelToPoint = false
                         
                         /*
-                    case Channels.CommandType.imagefeedRequest:
-                        logDebug("Recived command to enable/disable display feed: \(commandObject.boolValue)")
-                        SystemState.shared.worldState.devicesState[sourceDevice]?.imageDisplayEnabled = commandObject.boolValue
-                        */
+                         case Channels.CommandType.imagefeedRequest:
+                         logDebug("Recived command to enable/disable display feed: \(commandObject.boolValue)")
+                         SystemState.shared.worldState.devicesState[sourceDevice]?.imageDisplayEnabled = commandObject.boolValue
+                         */
                     case Channels.CommandType.beginTransitToPoint:
                         logDebug("Recived command to begin transit")
                         let destinationPoint = commandObject.pointValue
@@ -394,7 +420,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                     case .broadcastSessionID:
                         print("Received session ID: \(commandObject.stringValue) from \(sourceDevice)")
                         connectedSourceDevicesSessionIDs[commandObject.stringValue] = sourceDevice
-
+                        
                     default:
                         print("Unhandled command: \(commandObject)")
                     }
@@ -430,7 +456,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
         
         sleep(1)
-
+        
         
     }
     
@@ -438,18 +464,18 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     func runCommonCommandHandler(sourceDevice: SourceDevice, commandObject: Channels.Command) {
         
         /*
-        switch commandObject.type {
-            
-        case .worldStatusUpdate:
-            
-            if Common.getHostDevice() != hubDevice {
-                channels.globalState  = try! jsonDecoder.decode(System.GlobalState.self, from: commandObject.dataValue)
-            }
-            
-        default:
-            print("Ignored cases")
-        }
-        */
+         switch commandObject.type {
+         
+         case .worldStatusUpdate:
+         
+         if Common.getHostDevice() != hubDevice {
+         channels.globalState  = try! jsonDecoder.decode(System.GlobalState.self, from: commandObject.dataValue)
+         }
+         
+         default:
+         print("Ignored cases")
+         }
+         */
     }
     
     
@@ -459,43 +485,119 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     let commandButtonMargins: CGFloat = 2
     private var commandButtons: [CommandButton] = []
     //public typealias CommandButtonHandler = (action: UIAction) -> Void
+
+    
+    func getWorldMap() throws -> ARWorldMap {
+        let mapData = State.shared.currentDeviceState.arWorldMap
+        guard let worldMap = try NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: mapData)
+            else { throw ARError(.invalidWorldMap) }
+        return worldMap
+    }
+    
+    func positionalARSession() {
+        
+        if State.shared.currentDeviceState.arMode != .positional {
+
+            let arPositionalConfiguration = ARPositionalTrackingConfiguration()
+            do {
+                arPositionalConfiguration.initialWorldMap = try getWorldMap()
+            } catch {
+                fatalError("Could not load world map")
+            }
+            arView.session.run(arPositionalConfiguration)
+            arView.isHidden = false
+            
+            let device = Common.shared.unwrappedDeviceType(.hub)
+            if !device.isCurrentDevice() {
+                State.shared.operationalBrightness = 0.2
+            }
+            State.shared.currentDeviceState.arMode = .positional
+
+        }
+        
+    }
     
     func pauseARSession() {
-        if State.shared.currentDeviceState.arEnabled {
-            State.shared.currentDeviceState.arEnabled = false
+        if State.shared.currentDeviceState.arMode != .paused {
+            State.shared.currentDeviceState.arMode = .paused
             arView.session.pause()
             State.shared.operationalBrightness = UIScreen.main.brightness
             State.shared.currentDeviceState.fps = 0.0
         }
     }
     
-    func runARSession() {
-        if State.shared.currentDeviceState.arEnabled == false {
-            print("Ar2: \(State.shared.currentDeviceState.arEnabled)")
-
-            arView.session.delegate = self
-            arView.automaticallyConfigureSession = false
-            arConfiguration = ARWorldTrackingConfiguration()
-            if let config = arConfiguration {
-                config.planeDetection = [.horizontal]
-                config.environmentTexturing = .automatic
-                config.isCollaborationEnabled = true
-                arView.session.run(config)
+    func runFullARSession() {
+        if State.shared.currentDeviceState.arMode != .full || State.shared.currentDeviceState.arMode == .none {
+            let arConfiguration = ARWorldTrackingConfiguration()
+            if State.shared.currentDeviceState.arWorldMap.count > 0 {
+                do {
+                    arConfiguration.initialWorldMap = try getWorldMap()
+                } catch {
+                    fatalError("Could not load world map")
+                }
             }
+            arConfiguration.planeDetection = [.horizontal]
+            arConfiguration.environmentTexturing = .automatic
+            arConfiguration.isCollaborationEnabled = true
+            arView.session.run(arConfiguration)
             arView.isHidden = false
 
+            
             let device = Common.shared.unwrappedDeviceType(.hub)
             if !device.isCurrentDevice() {
                 State.shared.operationalBrightness = 0.2
             }
-            State.shared.currentDeviceState.arEnabled = true
-            print("Ar3: \(State.shared.currentDeviceState.arEnabled)")
+            State.shared.currentDeviceState.arMode = .full
+            
+            /*
+            self._nextLevel?.arConfiguration.
+            self._nextLevel?.arConfiguration.config = arConfiguration
+            self._nextLevel?.arConfiguration?.session = self.arView.session
+            self._nextLevel?.arConfiguration?.runOptions = [.resetTracking, .removeExistingAnchors]
+            */
+
+
+        }
+    }
+    
+    func getCurrentWorldMap(from session: ARSession, completionHandler: @escaping (ARWorldMap?, Error?) -> Void) {
+        session.getCurrentWorldMap { worldMap, error in
+            guard let worldMap = worldMap else {
+                completionHandler(nil, error)
+                return
+            }
+            completionHandler(worldMap, nil)
+        }
+    }
+    
+    func updateARWorldMap() {
+        
+        getCurrentWorldMap(from: arView.session) { worldMap, error in
+            guard let worldMap = worldMap else {
+                print("Failed to get world map: \(error?.localizedDescription ?? "Unknown error")")
+                return
+            }
+            let worldMapData = try! NSKeyedArchiver.archivedData(withRootObject: worldMap, requiringSecureCoding: false)
+            State.shared.currentDeviceState.arWorldMap = worldMapData
         }
     }
     
     
     func initDeviceStatusView() {
+        
         view.bringSubviewToFront(deviceStatusView)
+        
+        let deviceStatusHeight = CGFloat(SourceDevice.allCases.count) * (deviceStatusView.rowHeight + deviceStatusView.rowSpacing)
+        //deviceStatusView.frame = CGRectMake(deviceStatusView.frame.origin.x, deviceStatusView.frame.origin.y, deviceStatusView.bounds.width, deviceStatusHeight)
+        
+        NSLayoutConstraint.activate([
+            deviceStatusView.leadingAnchor.constraint(equalTo: topView.leadingAnchor, constant: screenEdgeMargins),
+            deviceStatusView.trailingAnchor.constraint(equalTo: topView.trailingAnchor, constant: -screenEdgeMargins),
+            deviceStatusView.bottomAnchor.constraint(equalTo: topView.bottomAnchor, constant: -screenEdgeMargins * 2),
+            deviceStatusView.topAnchor.constraint(equalTo: topView.bottomAnchor, constant: -deviceStatusHeight - screenEdgeMargins),
+            deviceStatusView.heightAnchor.constraint(equalToConstant: deviceStatusHeight),
+        ])
+        
     }
     
     func initCommandButtonsViews() {
@@ -506,7 +608,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         //commandButtonsView.touchesShouldCancel(in: commandButtonsView)
         commandButtonsView.delaysContentTouches = true
         
-        let refreshAction = UIAction(title: "Refresh") { (action) in
+        let _ = UIAction(title: "Refresh") { (action) in
             print("Refresh the data.")
         }
         
@@ -589,27 +691,34 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
     }
     
-    static func asdlfkj() {
-        while true == true {
-            print("True")
-            continue
-        }
-        return
-    }
-    
+    /*
+     override func viewWillAppear(_ animated: Bool) {
+     
+     // Hide the home indicator
+     if #available(iOS 11.0, *) {
+     self.additionalSafeAreaInsets = UIEdgeInsets(top: 0, left: 0, bottom: -UIApplication.shared.keyWindow!.safeAreaInsets.bottom, right: 0)
+     }
+     
+     }
+     */
     override func viewDidAppear(_ animated: Bool) {
- 
+        
         let width = arView.bounds.height
         let height = arView.bounds.width
         
-        let reticuleSize = 200.0
-        let reticuleViewVertical = UIView(frame: CGRect(x: width * 0.50, y: height * 0.50 - (reticuleSize * 0.50), width: 1.0, height: reticuleSize))
-        reticuleViewVertical.backgroundColor = UIColor.white
-        arView.addSubview(reticuleViewVertical)
         
-        let reticuleViewHoritzontal = UIView(frame: CGRect(x: width * 0.50 - (reticuleSize * 0.50), y: height * 0.50, width: reticuleSize, height: 1.0))
-        reticuleViewHoritzontal.backgroundColor = UIColor.white
-        arView.addSubview(reticuleViewHoritzontal)
+        
+        
+        /*
+         let reticuleSize = 200.0
+         let reticuleViewVertical = UIView(frame: CGRect(x: width * 0.50, y: height * 0.50 - (reticuleSize * 0.50), width: 1.0, height: reticuleSize))
+         reticuleViewVertical.backgroundColor = UIColor.white
+         arView.addSubview(reticuleViewVertical)
+         
+         let reticuleViewHoritzontal = UIView(frame: CGRect(x: width * 0.50 - (reticuleSize * 0.50), y: height * 0.50, width: reticuleSize, height: 1.0))
+         reticuleViewHoritzontal.backgroundColor = UIColor.white
+         arView.addSubview(reticuleViewHoritzontal)
+         */
         
         // self.view.bringSubviewToFront(imageView)
         initMultipeerSession()
@@ -787,7 +896,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
     }
     
-
+    
     func getPointForArena() -> CGPoint {
         return CGPoint(x: self.view.bounds.width * 0.50, y: self.view.bounds.height * 0.90)
     }
@@ -1182,24 +1291,24 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         channels.annonceSessionID(arView.session.identifier.uuidString)
     }
     
- 
-
+    
+    
     
     //var fpsTimer = Date()
     //var fpsCount = 0
     
-
-
+    
+    
     var lastTrackingState: ARCamera.TrackingState?
-
-
+    
+    
     // Variables
     //var frameCounter = 0.0
     
     // LAST CHAT APPROACH
     // Constants
     //
-
+    
     // Transmission rate debug
     var debugFrameCount = 0
     var debugTestTime = Date()
@@ -1211,33 +1320,45 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     var systemFPSMonitorTimer = Date()
     var systemFPSMonitorCount = 0.0
     
-    let statusMapping: [ARFrame.WorldMappingStatus: State.WorldMappingStatus] = [.notAvailable: .notAvailable, .limited: .limited, .extending: .extending, .mapped: .mapped]
+    var rawFeaturePointsCounter = 1
+    //let statusMapping: [ARFrame.WorldMappingStatus: State.WorldMappingStatus] = [.notAvailable: .notAvailable, .limited: .limited, .extending: .extending, .mapped: .mapped]
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+
+        /*
+        if rawFeaturePointsCounter > 60 {
+            getCurrentWorldMap(from: arView.session) { worldMap, error in
+                guard let worldMap = worldMap else {
+                    print("Failed to get world map: \(error?.localizedDescription ?? "Unknown error")")
+                    return
+                }
+                self.arView.displayRawFeaturePoints(worldMap: worldMap)
+            }
+            rawFeaturePointsCounter = 0
+        }
+        rawFeaturePointsCounter += 1
+        */
         
         //print("Ar session state: \(session.currentFrame)")
-        
+
         systemFPSMonitorCount += 1
         if abs(systemFPSMonitorTimer.timeIntervalSinceNow) >= systemFPSMonitorDisplayFrequency {
             let fps = (systemFPSMonitorCount / systemFPSMonitorDisplayFrequency)
             //print("System FPS: \(fps) - Total Frames in \(systemFPSMonitorDisplayFrequency) seconds: \(systemFPSMonitorCount)")
             systemFPSMonitorCount = 0
             systemFPSMonitorTimer = Date()
-            if State.shared.currentDeviceState.arEnabled {
+            if State.shared.currentDeviceState.arMode == .full {
                 State.shared.currentDeviceState.fps = Float(fps)
             } else {
                 State.shared.currentDeviceState.fps = 0.0
             }
-
+            
         }
         
         
         let timePerFrame = 1.0 / Double(channels.imageProcessingFPS)
         
         //channels.localDeviceState.worldMappingStatus = frame.worldMappingStatus.rawValue
-        if statusMapping[frame.worldMappingStatus] != State.shared.currentDeviceState.worldMappingStatus {
-            State.shared.currentDeviceState.worldMappingStatus = statusMapping[frame.worldMappingStatus]! 
-        }
-        /*
+       /*
          switch frame.worldMappingStatus {
          case .extending:
          print("worldMappingStatus: Extending")
@@ -1257,26 +1378,26 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         if frame.camera.trackingState != lastTrackingState {
             
             /*
-            switch frame.camera.trackingState {
-                
-            case .notAvailable:
-                print("Tracking not available")
-            case .limited(let reason):
-                print("Tracking limited:")
-                switch reason {
-                case .excessiveMotion:
-                    print("  Too much camera movement")
-                case .insufficientFeatures:
-                    print("  Insufficient features")
-                case .relocalizing:
-                    print("  Relocalizing")
-                default:
-                    print("  Unknown reason")
-                }
-            case .normal:
-                print("TRACKING  NORMAL")
-                
-            }
+             switch frame.camera.trackingState {
+             
+             case .notAvailable:
+             print("Tracking not available")
+             case .limited(let reason):
+             print("Tracking limited:")
+             switch reason {
+             case .excessiveMotion:
+             print("  Too much camera movement")
+             case .insufficientFeatures:
+             print("  Insufficient features")
+             case .relocalizing:
+             print("  Relocalizing")
+             default:
+             print("  Unknown reason")
+             }
+             case .normal:
+             print("TRACKING  NORMAL")
+             
+             }
              */
         }
         
@@ -1284,6 +1405,8 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         coordinates.text = "(\(String(format: "%.2f", destinationPoint.x)), \(String(format: "%.2f", destinationPoint.y)))"
         
         lastTrackingState = frame.camera.trackingState
+        
+        State.shared.currentDeviceState.worldMappingStatus = frame.worldMappingStatus
         
         // 30 fps: 0.33333
         // Required time interval: 0.03333
@@ -1313,34 +1436,72 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                 debugFrameCount = 0
                 debugTestTime = Date()
             }
-            
-            if State.shared.currentDeviceState.arEnabled {
+
+            let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
+            if devicesRequiringImageFeed.count > 0 {
+                
+                DispatchQueue.main.async {
+                    if let screenshot = self.captureScreenshot() {
+                        if let imageData = screenshot.jpegData(compressionQuality: 1.0) {
+                            State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
+                            for sourceDevice in devicesRequiringImageFeed {
+                                print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
+                                self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
+                            }
+                        }
+                    }
+                }
+            }
+   
+            /*
+            if State.shared.currentDeviceState.arMode == .full {
                 //DispatchQueue.main.async {
                 let scaleFactor = 0.25
                 let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
                 if devicesRequiringImageFeed.count > 0 {
+                    
                     self.arView.snapshot(saveToHDR: false) { [self] image in
                         if let i = image {
-                            if let scaledImage = UIImage.scale(image: i, by: scaleFactor) {
-                                if let imageData = scaledImage.jpegData(compressionQuality: 0.0) {
-                                    State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
-                                    for sourceDevice in devicesRequiringImageFeed {
-                                        //print("Sending image feed from \(Common.getHostDevice()) to \(sourceDevice)")
-                                        channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
-                                    }
+                            let scaledImage = i
+                            //if let scaledImage = UIImage.scale(image: i, by: scaleFactor) {
+                            if let imageData = scaledImage.jpegData(compressionQuality: 1.0) {
+                                State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
+                                for sourceDevice in devicesRequiringImageFeed {
+                                    //print("Sending image feed from \(Common.getHostDevice()) to \(sourceDevice)")
+                                    //channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
                                 }
                             }
+                            //}
                         }
                     }
-                    
                 }
+                
+                
+                //}
             }
-            //}
+             */
+             
         }
     }
+    
+    func captureScreenshot() -> UIImage? {
+        let window = UIApplication.shared.windows.first { $0.isKeyWindow }
+        let imageSize = window?.bounds.size ?? CGSize.zero
+        
+        UIGraphicsBeginImageContextWithOptions(imageSize, true, 0)
+        window?.drawHierarchy(in: window!.bounds, afterScreenUpdates: true)
+        let image = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        if let i = image {
+            return i
+        } else {
+            return nil
+        }
 
-    
-    
+        // Save the image to the Photo Library or share it
+    }
+
     /*
      func session(_ session: ARSession, didOutputCollaborationData data: ARSession.CollaborationData) {
      //print("Sessiion data")
@@ -1359,7 +1520,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
         
     }
-
+    
     /*
      func startScreenRecording() {
      let captureSession = AVCaptureSession()
@@ -1401,7 +1562,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
      
      }
      */
-
+    
     
 }
 
@@ -1539,7 +1700,7 @@ extension ViewController {
                 arView.scene.addAnchor(anchorEntity)
                 if let sourceDevice = connectedSourceDevicesSessionIDs[sessionIdentifier!.uuidString] {
                     self.message?.text = "\(sourceDevice)"
-
+                    
                 } else {
                     fatalError("Could not map AR participant to a device")
                 }
@@ -1620,53 +1781,29 @@ class CommandButton: UIButton  {
     
 }
 
-/*========== Copilot Suggestion 1/2
-class DeviceStatusView: UIView {
+class CustomARView: ARView {
     
-    var deviceStatus: [Common.SourceDevice: DeviceStatus] = [:]
-    var deviceStatusLabels: [Common.SourceDevice: UILabel] = [:]
-    
-    var deviceStatusStackView: UIStackView!
-    
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        setupDeviceStatusStackView()
-    }
-    
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupDeviceStatusStackView()
-    }
-    
-    func setupDeviceStatusStackView() {
-        deviceStatusStackView = UIStackView()
-        deviceStatusStackView.axis = .horizontal
-        deviceStatusStackView.distribution = .fillEqually
-        deviceStatusStackView.alignment = .fill
-        deviceStatusStackView.spacing = 8.0
-        deviceStatusStackView.translatesAutoresizingMaskIntoConstraints = false
-        self.addSubview(deviceStatusStackView)
-        
-        NSLayoutConstraint.activate([
-            deviceStatusStackView.leadingAnchor.constraint(equalTo: self.leadingAnchor),
-            deviceStatusStackView.trailingAnchor.constraint(equalTo: self.trailingAnchor),
-            deviceStatusStackView.topAnchor.constraint(equalTo: self.topAnchor),
-            deviceStatusStackView.bottomAnchor.constraint(equalTo: self.bottomAnchor)
-        ])
-    }
-    
-    func setDeviceStatus(device: Common.SourceDevice, status: DeviceStatus) {
-        deviceStatus[device] = status
-        if let label = deviceStatusLabels[device] {
-            label.text = "\(device): \(status)"
-        } else {
-            let label = UILabel()
-            label.text = "\(device): \(status)"
-            deviceStatusLabels[device] = label
-            deviceStatusStackView.addArrangedSubview(label)
+    func displayRawFeaturePoints(worldMap: ARWorldMap) {
+        let points = worldMap.rawFeaturePoints.points
+
+        for point in points {
+            let entity = createSphereEntity(radius: 0.001, color: .red)
+            entity.transform.translation = SIMD3<Float>(point)
+            let anchor = ARAnchor(transform: entity.transform.matrix)
+            let anchorEntity = AnchorEntity(anchor: anchor)
+            anchorEntity.addChild(entity)
+            self.scene.addAnchor(anchorEntity)
         }
     }
-    
-}
 
-*///======== End of Copilot Suggestion
+    private func createSphereEntity(radius: Float, color: UIColor) -> Entity {
+        let sphere = MeshResource.generateSphere(radius: radius)
+        let material = SimpleMaterial(color: color, isMetallic: false)
+        let modelComponent = ModelComponent(mesh: sphere, materials: [material])
+
+        let entity = Entity()
+        entity.components[ModelComponent] = modelComponent
+
+        return entity
+    }
+}

@@ -52,6 +52,9 @@ class VideoStreamView: UIView {
     
     func setup() {
         
+        backgroundColor = UIColor.lightGray
+        
+        let sourceLabelHeight: CGFloat = 25.0
         imageView.frame = CGRectMake(0.0, 0.0, bounds.width, bounds.height)
         addSubview(imageView)
         imageView.backgroundColor = UIColor.clear
@@ -59,19 +62,23 @@ class VideoStreamView: UIView {
         NSLayoutConstraint.activate([
             imageView.leadingAnchor.constraint(equalTo: self.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: self.trailingAnchor),
-            imageView.topAnchor.constraint(equalTo: self.topAnchor),
+            imageView.topAnchor.constraint(equalTo: self.topAnchor, constant: sourceLabelHeight),
             imageView.bottomAnchor.constraint(equalTo: self.bottomAnchor)
         ])
-        videoSourceLabel.backgroundColor = UIColor.yellow
-        videoSourceLabel.frame = CGRectMake(0.0, 0.0, 250, 25)
-        videoSourceLabel.font = UIFont.systemFont(ofSize: 10)
+        
+        videoSourceLabel.backgroundColor = darkGray
+        videoSourceLabel.frame = CGRectMake(0.0, 0.0, bounds.width, sourceLabelHeight)
+        videoSourceLabel.font = UIFont.systemFont(ofSize: 12)
         videoSourceLabel.text = videoSourceText
         videoSourceLabel.autoresizingMask = [.flexibleRightMargin, .flexibleBottomMargin]
         addSubview(videoSourceLabel)
+        NSLayoutConstraint.activate([
+            videoSourceLabel.widthAnchor.constraint(equalTo: self.widthAnchor)
+        ])
     }
     
     func reset() {
-        videoSourceLabel.text = videoSourceText
+        videoSourceLabel.text = "  \(videoSourceText)"
         imageView.image = UIImage()
     }
     

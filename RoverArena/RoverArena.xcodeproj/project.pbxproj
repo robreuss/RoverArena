@@ -19,6 +19,7 @@
 		20746CFD29A580C2008FC841 /* WorldScan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20746CFC29A580C2008FC841 /* WorldScan.swift */; };
 		20746D1F29A6571F008FC841 /* Channels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20746D1E29A6571F008FC841 /* Channels.swift */; };
 		20773B1729C2A23A005CD27D /* VideoStreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20773B1629C2A23A005CD27D /* VideoStreamView.swift */; };
+		207D962129DA7B4400B37E88 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207D962029DA7B4400B37E88 /* Constants.swift */; };
 		208A4C3329B63266000FE5C5 /* MultipeerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 208A4C3229B63266000FE5C5 /* MultipeerSession.swift */; };
 		20A41DC929C7D3AF0042193F /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 20A41DC829C7D3AF0042193F /* CoreGraphics.framework */; };
 		20B574CD29BFDB5D009BC0AA /* DeviceStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B574CC29BFDB5D009BC0AA /* DeviceStatusView.swift */; };
@@ -38,6 +39,7 @@
 		20746D1D29A588E1008FC841 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		20746D1E29A6571F008FC841 /* Channels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Channels.swift; sourceTree = "<group>"; };
 		20773B1629C2A23A005CD27D /* VideoStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStreamView.swift; sourceTree = "<group>"; };
+		207D962029DA7B4400B37E88 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		208A4C3229B63266000FE5C5 /* MultipeerSession.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MultipeerSession.swift; sourceTree = "<group>"; };
 		20A41DC829C7D3AF0042193F /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		20B574CC29BFDB5D009BC0AA /* DeviceStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceStatusView.swift; sourceTree = "<group>"; };
@@ -83,6 +85,7 @@
 				20746D1E29A6571F008FC841 /* Channels.swift */,
 				202D652C29CB85AE005C785A /* State.swift */,
 				20746CE629A27298008FC841 /* ViewController.swift */,
+				207D962029DA7B4400B37E88 /* Constants.swift */,
 				2007190B29BABD1C0076924F /* OldCode.swift */,
 				208A4C3229B63266000FE5C5 /* MultipeerSession.swift */,
 				20746CEA29A27298008FC841 /* Main.storyboard */,
@@ -157,6 +160,8 @@
 				Base,
 			);
 			mainGroup = 20746CD829A27298008FC841;
+			packageReferences = (
+			);
 			productRefGroup = 20746CE229A27298008FC841 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -185,6 +190,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				20B574CD29BFDB5D009BC0AA /* DeviceStatusView.swift in Sources */,
+				207D962129DA7B4400B37E88 /* Constants.swift in Sources */,
 				2007190C29BABD1C0076924F /* OldCode.swift in Sources */,
 				208A4C3329B63266000FE5C5 /* MultipeerSession.swift in Sources */,
 				20746CE729A27298008FC841 /* ViewController.swift in Sources */,
@@ -345,6 +351,7 @@
 				INFOPLIST_FILE = RoverArena/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "";
 				INFOPLIST_KEY_NSLocationUsageDescription = Rover;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Listening to your private conversation";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -358,8 +365,10 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				"OTHER_SWIFT_FLAGS[arch=*]" = "-DUSE_ARKIT -DUSE_TRUE_DEPTH";
 				PRODUCT_BUNDLE_IDENTIFIER = com.simplyformed.RoverArena;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -378,6 +387,7 @@
 				INFOPLIST_FILE = RoverArena/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "";
 				INFOPLIST_KEY_NSLocationUsageDescription = Rover;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Listening to your private conversation";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -391,6 +401,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-DUSE_ARKIT -DUSE_TRUE_DEPTH";
 				PRODUCT_BUNDLE_IDENTIFIER = com.simplyformed.RoverArena;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

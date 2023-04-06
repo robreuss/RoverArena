@@ -58,12 +58,7 @@ class Channels {
     public typealias Handler<T> = (SourceDevice, T) -> Void
     // public typealias Handler = () -> Void
     var handlers: [ContentType: [SourceDevice: Handler<Any>]] = [:]
-    
-    let eid_command: Int8 = 1
-    let eid_image: Int8 = 2
-    let eid_state: Int8 = 3
-    let eid_collaboration: Int8 = 4
-    
+
     enum ContentType: Int8, CaseIterable {
         case command = 1
         case image = 2
@@ -134,7 +129,7 @@ class Channels {
 
     
     private func executeHandler<T: Decodable>(sourceDevice: SourceDevice, contentType: ContentType, dataType: T.Type, element: Element) {
-        if contentType != .image { logDebug("Executing handler for content type \(contentType) for device \(sourceDevice)") }
+        if contentType != .image { logVerbose("Executing handler for content type \(contentType) for device \(sourceDevice)") }
         if let handler = handlers[contentType]?[sourceDevice] {
             if let data = element.dataValue {
                 if dataType == Data.self {
@@ -201,7 +196,7 @@ class Channels {
 
     func processObjectIncomingFromDevice(sourceDevice: SourceDevice, contentType: ContentType, element: Element) {
         
-        if contentType != .image { logDebug("Processing incoming object from device \(sourceDevice) of content type \(contentType)") }
+        if contentType != .image { logVerbose("Processing incoming object from device \(sourceDevice) of content type \(contentType)") }
         switch contentType {
             
         case .command:
@@ -266,9 +261,12 @@ class Channels {
             
             device.events.deviceDisconnected.handler = { _ in
                 if sourceDevice == Common.shared.hubDevice() {
+                    
+                    /*
                     State.shared.devicesState[sourceDevice] = State.DeviceState(sourceDevice: sourceDevice)
                     State.shared.devicesState[sourceDevice]?.refreshUI = true
                     State.shared.devicesState[sourceDevice]?.refreshUI = false
+                     */
                     /*
                     if var deviceState = SystemState.shared.devicesState[sourceDevice] {
                         deviceState.channelStatus = .disconnected
@@ -285,9 +283,8 @@ class Channels {
             
             device.events.connected.handler = { [self] (device) in
                 
-                if sourceDevice == Common.shared.hubDevice() {
-                    State.shared.currentDeviceState.channelStatus = .controller
-                }
+                // We need to handle the onboard device here
+                State.shared.currentDeviceState.channelStatus = .controller
                 
                 for contentType in ContentType.allCases {
                     let element = device.attachElement(Element(identifier: contentType.rawValue, displayName: "Content Type id #\(contentType)", proto: .tcp, dataType: .Data))
@@ -308,7 +305,7 @@ class Channels {
                 }
                 
                 State.shared.currentDeviceState.refreshUI = true
-
+                reportDeviceStatusToHubDevice()
             }
             
             device.connect()

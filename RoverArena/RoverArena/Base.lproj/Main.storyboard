@@ -16,52 +16,36 @@
                         <rect key="frame" x="0.0" y="0.0" width="1366" height="1024"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                         <subviews>
-                            <arView multipleTouchEnabled="YES" contentMode="scaleToFill" preservesSuperviewLayoutMargins="YES" translatesAutoresizingMaskIntoConstraints="NO" id="P3K-l5-YrB">
+                            <arView multipleTouchEnabled="YES" contentMode="scaleToFill" preservesSuperviewLayoutMargins="YES" translatesAutoresizingMaskIntoConstraints="NO" id="P3K-l5-YrB" customClass="CustomARView" customModule="RoverArena" customModuleProvider="target">
                                 <rect key="frame" x="50" y="63" width="1290" height="938"/>
                             </arView>
-                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" ambiguous="YES" text="Message" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="Zly-BY-axu">
-                                <rect key="frame" x="184" y="379" width="1022" height="22"/>
-                                <color key="backgroundColor" white="0.33333333333333331" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
-                                <color key="tintColor" systemColor="labelColor"/>
-                                <constraints>
-                                    <constraint firstAttribute="height" constant="22" id="1Rr-NN-k0Y"/>
-                                </constraints>
-                                <fontDescription key="fontDescription" type="system" pointSize="17"/>
-                                <nil key="textColor"/>
-                                <nil key="highlightedColor"/>
-                            </label>
-                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Coor" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="akf-Y6-X8z">
+                            <label hidden="YES" opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Coor" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="akf-Y6-X8z">
                                 <rect key="frame" x="676.5" y="521.5" width="37" height="21"/>
                                 <color key="backgroundColor" systemColor="systemPinkColor"/>
                                 <fontDescription key="fontDescription" type="system" pointSize="17"/>
                                 <nil key="textColor"/>
                                 <nil key="highlightedColor"/>
                             </label>
-                            <scrollView clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleToFill" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="fbX-61-BKn" userLabel="CommandButtonsView">
+                            <scrollView hidden="YES" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleToFill" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="fbX-61-BKn" userLabel="CommandButtonsView">
                                 <rect key="frame" x="20" y="20" width="327" height="248"/>
                                 <viewLayoutGuide key="contentLayoutGuide" id="iq0-LA-Pgk"/>
                                 <viewLayoutGuide key="frameLayoutGuide" id="IET-7y-xkb"/>
                             </scrollView>
-                            <view contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="1M7-oh-qII" customClass="DeviceStatusView" customModule="RoverArena" customModuleProvider="target">
+                            <view contentMode="scaleToFill" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="1M7-oh-qII" customClass="DeviceStatusView" customModule="RoverArena" customModuleProvider="target">
                                 <rect key="frame" x="28" y="788" width="1260" height="128"/>
                                 <color key="backgroundColor" systemColor="systemBackgroundColor"/>
                             </view>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="DgE-yh-MD0"/>
-                        <color key="backgroundColor" white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                        <color key="backgroundColor" red="0.15385389819587625" green="0.12998290713034452" blue="0.09584134822992825" alpha="1" colorSpace="custom" customColorSpace="displayP3"/>
                         <constraints>
                             <constraint firstItem="DgE-yh-MD0" firstAttribute="trailing" secondItem="fbX-61-BKn" secondAttribute="trailing" constant="1019" id="67N-Pf-cbD"/>
-                            <constraint firstItem="1M7-oh-qII" firstAttribute="top" secondItem="Wcz-AS-9hx" secondAttribute="top" constant="788" id="I7K-7w-WNs"/>
                             <constraint firstItem="fbX-61-BKn" firstAttribute="leading" secondItem="Wcz-AS-9hx" secondAttribute="leadingMargin" id="IYe-bV-cg0"/>
                             <constraint firstItem="P3K-l5-YrB" firstAttribute="centerY" secondItem="akf-Y6-X8z" secondAttribute="centerY" id="JlX-ll-zxq"/>
                             <constraint firstAttribute="bottom" secondItem="fbX-61-BKn" secondAttribute="bottom" constant="756" id="LP2-Gb-DcP"/>
-                            <constraint firstItem="1M7-oh-qII" firstAttribute="leading" secondItem="DgE-yh-MD0" secondAttribute="leading" constant="28" id="Md8-Ka-3sG"/>
-                            <constraint firstItem="Zly-BY-axu" firstAttribute="leading" relation="greaterThanOrEqual" secondItem="DgE-yh-MD0" secondAttribute="leading" id="QA3-z1-wHP"/>
                             <constraint firstItem="P3K-l5-YrB" firstAttribute="centerX" secondItem="akf-Y6-X8z" secondAttribute="centerX" id="S5Z-DE-j2Y"/>
                             <constraint firstItem="DgE-yh-MD0" firstAttribute="trailing" secondItem="P3K-l5-YrB" secondAttribute="trailing" constant="26" id="brW-2y-h1z"/>
                             <constraint firstItem="DgE-yh-MD0" firstAttribute="trailing" secondItem="1M7-oh-qII" secondAttribute="trailing" constant="78" id="f4h-wW-CJZ"/>
-                            <constraint firstItem="P3K-l5-YrB" firstAttribute="centerX" secondItem="Zly-BY-axu" secondAttribute="centerX" id="kgF-CT-Vz7"/>
-                            <constraint firstItem="DgE-yh-MD0" firstAttribute="trailing" secondItem="Zly-BY-axu" secondAttribute="trailing" constant="160" id="khY-s7-h8r"/>
                             <constraint firstItem="fbX-61-BKn" firstAttribute="top" secondItem="DgE-yh-MD0" secondAttribute="top" id="paQ-bK-Q1k"/>
                             <constraint firstItem="DgE-yh-MD0" firstAttribute="bottom" secondItem="P3K-l5-YrB" secondAttribute="bottom" constant="23" id="qUe-JI-fad"/>
                             <constraint firstItem="P3K-l5-YrB" firstAttribute="leading" secondItem="DgE-yh-MD0" secondAttribute="leading" constant="50" id="rCa-Qy-Z8r"/>
@@ -74,7 +58,6 @@
                         <outlet property="commandButtonsView" destination="fbX-61-BKn" id="1vL-54-zQu"/>
                         <outlet property="coordinates" destination="akf-Y6-X8z" id="Z91-cE-mv2"/>
                         <outlet property="deviceStatusView" destination="1M7-oh-qII" id="eoM-j9-ej8"/>
-                        <outlet property="message" destination="Zly-BY-axu" id="dk5-CN-OM5"/>
                         <outlet property="topView" destination="Wcz-AS-9hx" id="096-Ep-lQ9"/>
                     </connections>
                 </viewController>
@@ -88,9 +71,6 @@
         </scene>
     </scenes>
     <resources>
-        <systemColor name="labelColor">
-            <color red="0.0" green="0.0" blue="0.0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-        </systemColor>
         <systemColor name="systemBackgroundColor">
             <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
         </systemColor>

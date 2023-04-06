@@ -19,12 +19,6 @@ import Combine
 // Image feed (device count)
 
 
-let darkRed = UIColor(red: 0.6, green: 0.2, blue: 0.2, alpha: 1.0)
-let darkYellow = UIColor(red: 0.7, green: 0.5, blue: 0.0, alpha: 1.0)
-let darkGreen = UIColor(red: 0.1, green: 0.5, blue: 0.1, alpha: 1.0)
-let grayWhite = UIColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.9)
-let darkGray = UIColor(red: 0.3, green: 0.3, blue: 0.3, alpha: 0.9)
-
 
 class DeviceStatusViewLabel: UILabel {
     
@@ -83,7 +77,7 @@ class DeviceStatusView: UIView {
     var rowWidth: CGFloat = 185.0
     var xCursor: CGFloat = 0.0
     
-
+    
     var deviceNameLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var launchDateLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var channelStatusLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
@@ -91,26 +85,26 @@ class DeviceStatusView: UIView {
     var batteryStateLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var batteryLevelLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var p2pStatusLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
-    var mappingStatusLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
+    var worldMappingLables: [SourceDevice: DeviceStatusViewLabel] = [:]
     var imageFeedStatusLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     var worldPositionLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
     
     var fpsLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
-    var arEnabledLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
-  
+    var arModeLabels: [SourceDevice: DeviceStatusViewLabel] = [:]
+    
     let hubDevice = Array(Common.shared.devicesWithRole(.hub))
     //let tripodDevice = Array(Common.shared.devicesWithRole(.tripod))
     let controllers = Array(Common.shared.devicesWithRole(.controller))
     var devices: [SourceDevice] = []
     
     var cancellable: AnyCancellable?
-
-
+    
+    
     /*
-    let cancellable = SystemState.shared.$devicesState.sink { newValue in
-        refreshViews()
-        print("myProperty has changed to: \(newValue)")
-    }
+     let cancellable = SystemState.shared.$devicesState.sink { newValue in
+     refreshViews()
+     print("myProperty has changed to: \(newValue)")
+     }
      */
     
     func setupState() {
@@ -135,15 +129,13 @@ class DeviceStatusView: UIView {
     
     private func refreshViews() {
         
-        print("Refreshing status views")
-        
         DispatchQueue.main.async {
             
             for sourceDevice in SourceDevice.allCases {
                 
                 if let sourceDeviceState = State.shared.devicesState[sourceDevice] {
                     
-        
+                    
                     // Uptime
                     if let launchDateLabel = self.launchDateLabels[sourceDevice] {
                         
@@ -165,8 +157,11 @@ class DeviceStatusView: UIView {
                             
                             launchDateLabel.text = "\(timeString)"
                             launchDateLabel.backgroundColor = darkGreen
+                        } else {
+                            launchDateLabel.text = "~"
+                            launchDateLabel.backgroundColor = darkGray
                         }
-
+                        
                     }
                     
                     // Channel
@@ -287,7 +282,43 @@ class DeviceStatusView: UIView {
                         }
                         batteryStateLabel.text = batteryStateString
                     }
-
+                    
+                    // World mapping
+                    if let worldMappingLabel = self.worldMappingLables[sourceDevice] {
+                        var worldMappingString: String
+                        
+                        switch sourceDeviceState.worldMappingStatus {
+                        case .notAvailable:
+                            worldMappingString = "None"
+                            worldMappingLabel.backgroundColor = darkGray
+                            worldMappingLabel.blink = false
+                        case .limited:
+                            worldMappingString = "Limited"
+                            worldMappingLabel.backgroundColor = darkYellow
+                            worldMappingLabel.blink = false
+                        case .extending:
+                            worldMappingString = "Extending"
+                            worldMappingLabel.backgroundColor = darkYellow
+                            worldMappingLabel.blink = false
+                        case .mapped:
+                            worldMappingString = "Mapped"
+                            worldMappingLabel.backgroundColor = darkGreen
+                            worldMappingLabel.blink = false
+                        @unknown default:
+                            worldMappingString = "~"
+                            worldMappingLabel.backgroundColor = darkGray
+                        }
+                        
+                        if sourceDeviceState.channelStatus == .disconnected {
+                            worldMappingString = "~"
+                            worldMappingLabel.backgroundColor = darkGray
+                            worldMappingLabel.blink = false
+                        } else {
+                            worldMappingLabel.text = worldMappingString
+                        }
+                        
+                    }
+                    
                     
                     // FPS
                     if let fpsLevelLabel = self.fpsLabels[sourceDevice] {
@@ -322,24 +353,36 @@ class DeviceStatusView: UIView {
                     }
                     
                     
-                    // AREnabled
-                    if let arEnabledLabel = self.arEnabledLabels[sourceDevice] {
+                    // ARMode
+                    if let arModeLabel = self.arModeLabels[sourceDevice] {
                         
-                        arEnabledLabel.text = sourceDeviceState.arEnabled ? "Yes" : "No"
-                        
-                        if sourceDeviceState.arEnabled {
-                            arEnabledLabel.backgroundColor = darkGreen
-                        } else {
-                            arEnabledLabel.backgroundColor = darkRed
+                        arModeLabel.text = sourceDeviceState.arMode.rawValue
+                        switch sourceDeviceState.arMode {
+                            
+                        case .none:
+                            arModeLabel.backgroundColor = darkGray
+                            arModeLabel.blink = false
+                            
+                        case .full:
+                            arModeLabel.backgroundColor = darkGreen
+                            arModeLabel.blink = false
+                            
+                        case .paused:
+                            arModeLabel.backgroundColor = darkYellow
+                            arModeLabel.blink = false
+                            
+                        case .positional:
+                            arModeLabel.backgroundColor = darkYellow
+                            arModeLabel.blink = false
                         }
                         
                         if sourceDeviceState.thermalState.thermalState == .serious {
-                            arEnabledLabel.backgroundColor = darkYellow
+                            arModeLabel.blink = true
                         }
                         
                         if !sourceDeviceState.sourceDevice.isCurrentDevice() && sourceDeviceState.channelStatus == .disconnected {
-                            arEnabledLabel.backgroundColor = darkGray
-                            arEnabledLabel.text = "~"
+                            arModeLabel.backgroundColor = darkGray
+                            arModeLabel.text = "~"
                         }
                         
                     }
@@ -377,7 +420,7 @@ class DeviceStatusView: UIView {
                         }
                         
                     }
-
+                    
                     
                 }
                 
@@ -417,7 +460,7 @@ class DeviceStatusView: UIView {
                 } else {
                     label.text = defaults[index]
                 }
-               
+                
             }
         }
         xCursor = xCursor + columnWidth + columnSpacing
@@ -430,38 +473,40 @@ class DeviceStatusView: UIView {
         let _ = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
             self.refreshViews()
         }
-
-
+        
+        
         devices = hubDevice + [.iPhone14ProMax, .iPhone12Pro, .iPhoneXSMax]
         //devices = hubDevice + tripodDevice + controllers
         let deviceNames = devices.map { device in
             return device.rawValue
         }
         
-        backgroundColor = UIColor.black
+        backgroundColor = UIColor.clear
         rowWidth = self.bounds.width - (rightMargin + leftMargin)
-
+        
         let totalHeight = (rowHeight + rowSpacing) * CGFloat(Common.deviceSet.count) + topMargin + topMargin
         
         deviceNameLabels = addColumn(header: "Device", defaults: deviceNames, sampleTextForWidth: "iPhone14ProMax")
         launchDateLabels = addColumn(header: "Uptime", defaults: ["~"], sampleTextForWidth: "Runtime")
         channelStatusLabels = addColumn(header: "Channel", defaults: ["~"], sampleTextForWidth: "Controller")
-        thermalStateLabels = addColumn(header: "Thermal", defaults: ["~"], sampleTextForWidth: "Nominal")
         
         batteryLevelLabels = addColumn(header: "Power", defaults: ["~"], sampleTextForWidth: "Power")
         batteryStateLabels = addColumn(header: "Source", defaults: ["~"], sampleTextForWidth: "Charging")
-
+        thermalStateLabels = addColumn(header: "Thermal", defaults: ["~"], sampleTextForWidth: "Nominal")
+        arModeLabels = addColumn(header: "AR Mode", defaults: ["~"], sampleTextForWidth: "Positional")
+        
+        worldMappingLables = addColumn(header: "Mapping", defaults: ["~"], sampleTextForWidth: "Not available")
         imageFeedStatusLabels = addColumn(header: "Video", defaults: ["~"], sampleTextForWidth: "Feeding")
         p2pStatusLabels = addColumn(header: "P2P", defaults: ["~"], sampleTextForWidth: "Connected")
-        mappingStatusLabels = addColumn(header: "Mapping", defaults: ["~"], sampleTextForWidth: "Fully mapped")
+        
         //arStatusLabels = addColumn(header: "World", defaults: ["Disconnected"], width: statusLightWidth)
-        arEnabledLabels = addColumn(header: "Rendering", defaults: ["~"], sampleTextForWidth: "Rendering")
+        
         fpsLabels = addColumn(header: "FPS", defaults: ["0.0"], sampleTextForWidth: "FPS")
         worldPositionLabels = addColumn(header: "Position", defaults: ["~"], sampleTextForWidth: "Position")
-
+        
         frame = CGRectMake(frame.origin.x, frame.origin.y, frame.size.width, totalHeight)
         
     }
-
+    
     
 }

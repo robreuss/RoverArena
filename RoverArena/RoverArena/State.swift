@@ -10,6 +10,7 @@ import RoverFramework
 import UIKit
 import ElementalController
 import Combine
+import ARKit
 
 class State: ObservableObject {
     
@@ -50,13 +51,14 @@ class State: ObservableObject {
         case joined = "Joined"
     }
     
+    /*
     enum WorldMappingStatus: String, Encodable, Decodable {
         case mapped = "Mapped"
         case notAvailable = "Not Available"
         case extending = "Extending"
         case limited = "Limited"
     }
-    
+    */
     enum ChannelStatus: String, Encodable, Decodable {
         case disconnected = "~"
         case hub = "Hub"
@@ -91,6 +93,13 @@ class State: ObservableObject {
    
     }
 
+    enum ARMode: String, Encodable, Decodable {
+        case none = "~"
+        case full = "Full"
+        case positional = "Positional"
+        case paused = "Paused"
+    }
+
     struct DeviceState: Encodable, Decodable, Equatable {
         //let statusMappingToString: [ARFrame.WorldMappingStatus: String] = [.notAvailable: "Not Available", .limited: "Limited", .extending: "Extending", .mapped: "Mapped"]
 
@@ -101,7 +110,10 @@ class State: ObservableObject {
         var sourceDevice: SourceDevice = .none
         var sessionIdentifier: String = ""
         var deviceP2PConnectedStatus: DeviceP2PConnectedStatus = .unknown
-        var worldMappingStatus: WorldMappingStatus = .notAvailable
+        //var worldMappingStatus: WorldMappingStatus = .notAvailable
+        var worldMappingStatus: ARFrame.WorldMappingStatus = .notAvailable
+        var arMode: ARMode = .none
+        var arWorldMap = Data()
         
         var thermalState = EncodableThermalState(thermalState: .nominal)
         var batteryLevel: Float = 0.0
@@ -111,8 +123,6 @@ class State: ObservableObject {
         var requestedImageFeedSources: [SourceDevice] = []
         var videoSourceDisplaying: VideoSource  = .localAR // UI tracking value
         
-        
-        var arEnabled = false
         var fps: Float = 0.0
         
         var channelStatus: ChannelStatus = .disconnected
@@ -165,11 +175,8 @@ class State: ObservableObject {
             if UIDevice.current.isBatteryMonitoringEnabled == false {
                 UIDevice.current.isBatteryMonitoringEnabled = true
                 usleep(500000)
-                print("Battery: \(UIDevice.current.batteryLevel)")
                 currentDeviceState.batteryLevel = UIDevice.current.batteryLevel
                 currentDeviceState.batteryState.batteryState = UIDevice.current.batteryState
-                print("New state: \(currentDeviceState.batteryState.batteryState)")
-                print("")
             }
 
             devicesState[currentDeviceState.sourceDevice] = currentDeviceState
@@ -188,7 +195,7 @@ class State: ObservableObject {
             // Store the incoming device state
             do {
                 let deviceState = try jsonDecoder.decode(DeviceState.self, from: d)
-                logDebug("\(Common.currentDevice()) processing incoming device state from \(deviceState.sourceDevice)")
+                logVerbose("\(Common.currentDevice()) processing incoming device state from \(deviceState.sourceDevice)")
                 devicesState[deviceState.sourceDevice] = deviceState
                 // Send it to all child devices
                 if Common.shared.hubDevice() == Common.currentDevice() { broadcastStateForDevice(deviceState.sourceDevice) }
@@ -202,7 +209,7 @@ class State: ObservableObject {
     
     // Push the current device's state to hub
     public func updateHubWithDeviceState() {
-        logDebug("\(Common.currentDevice()) updating hub device with device state")
+        logVerbose("\(Common.currentDevice()) updating hub device with device state")
         let deviceState = devicesState[Common.currentDevice()]
         Channels.shared.sendContentTypeToSourceDevice(Common.shared.hubDevice(), toServer: true, type: Channels.ContentType.state, data: deviceState)
         
@@ -211,7 +218,7 @@ class State: ObservableObject {
     // Sub-function used by hub when pushing changed device states
     // out to other devices
     public func sendDeviceStateForDevice(_ sourceDeviceForState: SourceDevice, to device: SourceDevice) {
-        logDebug("\(Common.currentDevice()) sending state for device \(sourceDeviceForState) to device \(device)")
+        logVerbose("\(Common.currentDevice()) sending state for device \(sourceDeviceForState) to device \(device)")
         let deviceState = devicesState[sourceDeviceForState]
         Channels.shared.sendContentTypeToSourceDevice(device, toServer: false, type: Channels.ContentType.state, data: deviceState)
         
@@ -235,7 +242,7 @@ class State: ObservableObject {
         if Common.currentDevice() != Common.shared.hubDevice() {
             fatalError("Attempt to broadcast device state by non-hub device")
         }
-        logDebug("\(Common.currentDevice()) broadcasting state for device \(sourceDeviceForState)")
+        logVerbose("\(Common.currentDevice()) broadcasting state for device \(sourceDeviceForState)")
         for destinationSourceDevice in allOtherDevices {
             sendDeviceStateForDevice(sourceDeviceForState, to: destinationSourceDevice)
         }
@@ -249,7 +256,7 @@ class State: ObservableObject {
         if Common.currentDevice() == Common.shared.hubDevice() {
             fatalError("Attempt to broadcast device state by non-hub device")
         }
-        logDebug("\(Common.currentDevice()) broadcasting state for all devices to all devices")
+        logVerbose("\(Common.currentDevice()) broadcasting state for all devices to all devices")
         for stateSourceDevice in SourceDevice.allCases {
             for destinationSourceDevice in SourceDevice.allCases {
                 if destinationSourceDevice != Common.shared.hubDevice() {
@@ -399,4 +406,21 @@ class State: ObservableObject {
     }
 
     
+}
+
+extension ARFrame.WorldMappingStatus: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(Int.self)
+        guard let value = ARFrame.WorldMappingStatus(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(in: container,
+                                                   debugDescription: "Invalid raw value for ARFrame.WorldMappingStatus")
+        }
+        self = value
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(self.rawValue)
+    }
 }
