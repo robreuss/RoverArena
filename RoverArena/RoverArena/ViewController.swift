@@ -1454,36 +1454,38 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                 debugTestTime = Date()
             }
             
-            
-            let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
+            if (abs(self.transmitImageFeedTimer.timeIntervalSinceNow) >= 1 / 30) {
+                self.transmitImageFeedTimer = Date()
+                let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
             //print("image feed devices: \(devicesRequiringImageFeed)")
-            if devicesRequiringImageFeed.count > 0 {
-                
-                if let image = UIImage(pixelBuffer: frame.capturedImage) {
+                if devicesRequiringImageFeed.count > 0 {
                     
-                    if let scaledImage = UIImage.scale(image: image, by: scaleFactor) {
+                    if let image = UIImage(pixelBuffer: frame.capturedImage) {
                         
-                        
-                        convertUIImageToJPEGDataInBackground(image: scaledImage, compressionQuality: 0.1) { jpegData in
-                            guard let imageData = jpegData else {
-                                print("Failed to convert UIImage to JPEG data.")
-                                return
-                            }
+                        if let scaledImage = UIImage.scale(image: image, by: scaleFactor) {
                             
-                            //print("Image size: \(imageData.count)")
-                            // Use the JPEG data (e.g., save it, send it to a server, etc.)
-                            // Make sure to perform UI-related tasks on the main thread.
                             
-                            for sourceDevice in devicesRequiringImageFeed {
-                                //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
-                                self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
+                            convertUIImageToJPEGDataInBackground(image: scaledImage, compressionQuality: 0.1) { jpegData in
+                                guard let imageData = jpegData else {
+                                    print("Failed to convert UIImage to JPEG data.")
+                                    return
+                                }
+                                
+                                //print("Image size: \(imageData.count)")
+                                // Use the JPEG data (e.g., save it, send it to a server, etc.)
+                                // Make sure to perform UI-related tasks on the main thread.
+                                
+                                for sourceDevice in devicesRequiringImageFeed {
+                                    //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
+                                    self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
+                                }
+                                //State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
+                                
+                                
                             }
-                            //State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
                             
                             
                         }
-                        
-                        
                     }
                 }
 
