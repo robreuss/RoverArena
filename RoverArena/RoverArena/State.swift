@@ -23,6 +23,18 @@ class State: ObservableObject {
             devicesState[sourceDevice] = DeviceState()
         }
         addObservers()
+        
+        cancellable = $devicesState.sink { newValue in
+            /*
+            if self.currentDeviceState.channelStatus != .disconnected {
+                if Common.isHub() {
+                    self.broadcastStateForDevice(Common.currentDevice())
+                } else {
+                    Channels.shared.reportDeviceStatusToHubDevice()
+                }
+            }
+             */
+        }
 
     }
 
@@ -142,11 +154,18 @@ class State: ObservableObject {
         
         init(sourceDevice: SourceDevice? = SourceDevice.none) {
             if let sd = sourceDevice {
+                logDebug("Initializing device state for: \(sd)")
                 self.sourceDevice = sd
+                /*
+                if Common.isHub(sourceDevice: sd) {
+                    requestedImageFeedSources = [.iPhone12Pro, .iPhone14ProMax]
+                }
+                 */
                 if sd.isCurrentDevice() {
                     launchDate = Date()
                     batteryState = EncodableBatteryState(batteryState: UIDevice.current.batteryState)
                     thermalState = EncodableThermalState(thermalState: ProcessInfo.processInfo.thermalState)
+
                     
                 }
             }
@@ -312,7 +331,7 @@ class State: ObservableObject {
                 if let requestedImageFeeds = deviceState?.requestedImageFeedSources {
                     if requestedImageFeeds.contains(thisSourceDevice) {
                         //logDebug("Source device \(sourceDevice) requires image feed from \(Common.getHostDevice())")
-                        sourceDevicesRequestingImageFeed.insert(sourceDevice)
+                       sourceDevicesRequestingImageFeed.insert(sourceDevice)
                     }
                 }
             }

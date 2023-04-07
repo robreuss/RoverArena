@@ -57,6 +57,7 @@ class VideoStreamView: UIView {
         let sourceLabelHeight: CGFloat = 25.0
         imageView.frame = CGRectMake(0.0, 0.0, bounds.width, bounds.height)
         addSubview(imageView)
+        imageView.contentMode = .scaleAspectFit
         imageView.backgroundColor = UIColor.clear
         imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         NSLayoutConstraint.activate([

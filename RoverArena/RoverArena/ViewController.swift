@@ -17,10 +17,9 @@ import AVFoundation
 import CoreGraphics
 
 class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDelegate, WorldScanDelegate, AVCaptureFileOutputRecordingDelegate {
-  
     
     var cancellable: AnyCancellable?
-
+    
     var multipeerSession: MultipeerSession?
     var peerSessionIDs = [MCPeerID: String]()
     
@@ -37,7 +36,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     @IBOutlet weak var deviceStatusView: DeviceStatusView!
     
     @IBOutlet var topView: UIView!
-
+    
     var videoStreamViewOnboard: VideoStreamView!
     var videoStreamViewController: VideoStreamView!
     
@@ -158,11 +157,14 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     
     override func viewDidLoad() {
         super.viewDidLoad()
-
+        
+        
+        //ElementalController.loggerLogLevel = .Verbose
+        
         State.shared.operationalBrightness = 0.5
         arView.session.delegate = self
         arView.automaticallyConfigureSession = false
-
+        
         runFullARSession()
         
         cancellable = State.shared.$currentDeviceState.sink(receiveValue: { newValue in
@@ -231,8 +233,11 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             
         case .controller:
             
-            channels.setupConsumerOfServerDevice(hubDevice)
-            setupImageHandlerFromSourceDevice(hubDevice, videoStreamViewOnboard)
+            
+            if Common.currentDevice() != hubDevice {
+                channels.setupConsumerOfServerDevice(hubDevice)
+                setupImageHandlerFromSourceDevice(hubDevice, videoStreamViewOnboard)
+            }
             
             /*
              let tapGesture = UITapGestureRecognizer(target: self, action: #selector(travelToPoint(_:)))
@@ -319,6 +324,12 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             
             videoStreamViewOnboard.videoSourceDevice = .iPhone12Pro
             
+            channels.setupConsumerOfServerDevice(.iPhone12Pro)
+            setupImageHandlerFromSourceDevice(.iPhone12Pro, videoStreamViewOnboard)
+            
+            
+            
+            
             videoStreamViewController = VideoStreamView(frame: CGRectMake(0.0, videoStreamViewHeight + 10.0, videoStreamViewWidth, videoStreamViewHeight))
             videoStreamViewController.isHidden = false
             topView.addSubview(videoStreamViewController)
@@ -335,9 +346,6 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             
             channels.setupConsumerOfServerDevice(.iPhone14ProMax)
             setupImageHandlerFromSourceDevice(.iPhone14ProMax, videoStreamViewController)
-            
-            channels.setupConsumerOfServerDevice(hubDevice)
-            setupImageHandlerFromSourceDevice(hubDevice, videoStreamViewOnboard)
             
             arView.removeFromSuperview()
             topView.addSubview(arView)
@@ -372,8 +380,6 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             
             initDeviceStatusView()
             initCommandButtonsViews()
-            
-            State.shared.currentDeviceState.requestedImageFeedSources = [.iPhone12Pro, .iPhone14ProMax]
             
             //imageView.autoresizingMask = [.flexibleRightMargin, .flexibleBottomMargin]
             //imageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
@@ -446,6 +452,9 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             print("Camera translation: \(cameraPosition)")
             
             channels.setupAsServer()
+            
+            State.shared.currentDeviceState.requestedImageFeedSources = [.iPhone12Pro, .iPhone14ProMax]
+            
         }
         
         for device in Common.deviceSet {
@@ -485,19 +494,19 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     let commandButtonMargins: CGFloat = 2
     private var commandButtons: [CommandButton] = []
     //public typealias CommandButtonHandler = (action: UIAction) -> Void
-
+    
     
     func getWorldMap() throws -> ARWorldMap {
         let mapData = State.shared.currentDeviceState.arWorldMap
         guard let worldMap = try NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: mapData)
-            else { throw ARError(.invalidWorldMap) }
+        else { throw ARError(.invalidWorldMap) }
         return worldMap
     }
     
     func positionalARSession() {
         
         if State.shared.currentDeviceState.arMode != .positional {
-
+            
             let arPositionalConfiguration = ARPositionalTrackingConfiguration()
             do {
                 arPositionalConfiguration.initialWorldMap = try getWorldMap()
@@ -512,7 +521,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                 State.shared.operationalBrightness = 0.2
             }
             State.shared.currentDeviceState.arMode = .positional
-
+            
         }
         
     }
@@ -541,7 +550,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             arConfiguration.isCollaborationEnabled = true
             arView.session.run(arConfiguration)
             arView.isHidden = false
-
+            
             
             let device = Common.shared.unwrappedDeviceType(.hub)
             if !device.isCurrentDevice() {
@@ -550,13 +559,13 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             State.shared.currentDeviceState.arMode = .full
             
             /*
-            self._nextLevel?.arConfiguration.
-            self._nextLevel?.arConfiguration.config = arConfiguration
-            self._nextLevel?.arConfiguration?.session = self.arView.session
-            self._nextLevel?.arConfiguration?.runOptions = [.resetTracking, .removeExistingAnchors]
-            */
-
-
+             self._nextLevel?.arConfiguration.
+             self._nextLevel?.arConfiguration.config = arConfiguration
+             self._nextLevel?.arConfiguration?.session = self.arView.session
+             self._nextLevel?.arConfiguration?.runOptions = [.resetTracking, .removeExistingAnchors]
+             */
+            
+            
         }
     }
     
@@ -1086,6 +1095,8 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             print("No arena floor entity")
         }
         
+        let physicsMaterial = PhysicsMaterialResource.generate(friction: 0.1, restitution: 0.8)
+        
     }
     
     func buildArenaOnScreenPoint(_ point: CGPoint) {
@@ -1192,7 +1203,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         //arenaFloorEntity?.collision = CollisionComponent(shapes: [.generateBox(width: size, height: size, depth: size)])
         
         //arenaFloorEntity?.transform.translation =  SIMD3<Float>(x: cameraTransform.translation.x , y:0.0, z: cameraTransform.translation.z ) // Keep height the same, move rest to the
-        
+
         
         let occlusionMesh: MeshResource = .generatePlane(width: 1.2, depth: 1.2)
         let occlusionEntity = ModelEntity(mesh: occlusionMesh)
@@ -1320,26 +1331,32 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     var systemFPSMonitorTimer = Date()
     var systemFPSMonitorCount = 0.0
     
+    var transmitImageFeedFrequency = 1.0 // seconds
+    var transmitImageFeedTimer = Date()
+    var transmitImageFeedCount = 0.0
+    
     var rawFeaturePointsCounter = 1
+    
+    let scaleFactor = 0.25
     //let statusMapping: [ARFrame.WorldMappingStatus: State.WorldMappingStatus] = [.notAvailable: .notAvailable, .limited: .limited, .extending: .extending, .mapped: .mapped]
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-
+        
         /*
-        if rawFeaturePointsCounter > 60 {
-            getCurrentWorldMap(from: arView.session) { worldMap, error in
-                guard let worldMap = worldMap else {
-                    print("Failed to get world map: \(error?.localizedDescription ?? "Unknown error")")
-                    return
-                }
-                self.arView.displayRawFeaturePoints(worldMap: worldMap)
-            }
-            rawFeaturePointsCounter = 0
-        }
-        rawFeaturePointsCounter += 1
-        */
+         if rawFeaturePointsCounter > 60 {
+         getCurrentWorldMap(from: arView.session) { worldMap, error in
+         guard let worldMap = worldMap else {
+         print("Failed to get world map: \(error?.localizedDescription ?? "Unknown error")")
+         return
+         }
+         self.arView.displayRawFeaturePoints(worldMap: worldMap)
+         }
+         rawFeaturePointsCounter = 0
+         }
+         rawFeaturePointsCounter += 1
+         */
         
         //print("Ar session state: \(session.currentFrame)")
-
+        
         systemFPSMonitorCount += 1
         if abs(systemFPSMonitorTimer.timeIntervalSinceNow) >= systemFPSMonitorDisplayFrequency {
             let fps = (systemFPSMonitorCount / systemFPSMonitorDisplayFrequency)
@@ -1358,7 +1375,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         let timePerFrame = 1.0 / Double(channels.imageProcessingFPS)
         
         //channels.localDeviceState.worldMappingStatus = frame.worldMappingStatus.rawValue
-       /*
+        /*
          switch frame.worldMappingStatus {
          case .extending:
          print("worldMappingStatus: Extending")
@@ -1436,82 +1453,178 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                 debugFrameCount = 0
                 debugTestTime = Date()
             }
-
+            
+            
             let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
+            //print("image feed devices: \(devicesRequiringImageFeed)")
             if devicesRequiringImageFeed.count > 0 {
                 
-                DispatchQueue.main.async {
-                    if let screenshot = self.captureScreenshot() {
-                        if let imageData = screenshot.jpegData(compressionQuality: 1.0) {
-                            State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
+                if let image = UIImage(pixelBuffer: frame.capturedImage) {
+                    
+                    if let scaledImage = UIImage.scale(image: image, by: scaleFactor) {
+                        
+                        
+                        convertUIImageToJPEGDataInBackground(image: scaledImage, compressionQuality: 0.1) { jpegData in
+                            guard let imageData = jpegData else {
+                                print("Failed to convert UIImage to JPEG data.")
+                                return
+                            }
+                            
+                            //print("Image size: \(imageData.count)")
+                            // Use the JPEG data (e.g., save it, send it to a server, etc.)
+                            // Make sure to perform UI-related tasks on the main thread.
+                            
                             for sourceDevice in devicesRequiringImageFeed {
-                                print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
+                                //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
                                 self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
                             }
+                            //State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
+                            
+                            
                         }
+                        
+                        
                     }
                 }
+
             }
-   
-            /*
-            if State.shared.currentDeviceState.arMode == .full {
-                //DispatchQueue.main.async {
-                let scaleFactor = 0.25
-                let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
-                if devicesRequiringImageFeed.count > 0 {
-                    
-                    self.arView.snapshot(saveToHDR: false) { [self] image in
-                        if let i = image {
-                            let scaledImage = i
-                            //if let scaledImage = UIImage.scale(image: i, by: scaleFactor) {
-                            if let imageData = scaledImage.jpegData(compressionQuality: 1.0) {
-                                State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
+
+
+                
+                /*
+                if (abs(self.transmitImageFeedTimer.timeIntervalSinceNow) >= 1.0) {
+                    self.transmitImageFeedTimer = Date()
+*/
+
+                /*
+                    if let image = UIImage(pixelBuffer: frame.capturedImage)  {
+                        
+                        
+                        //if let imageData = image.jpegData(compressionQuality: 1.0) {
+
+                            //DispatchQueue.global().async {
                                 for sourceDevice in devicesRequiringImageFeed {
-                                    //print("Sending image feed from \(Common.getHostDevice()) to \(sourceDevice)")
-                                    //channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
+                                    //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
+                                    //self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
+                                }
+                                //State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
+                            //}
+                        //}
+                         
+                      */
+                    
+               // }
+                 
+               // }
+           // }
+            
+            
+            /*
+            captureScreenshot(completion: { screenshot in
+                guard let capturedImage = screenshot else {
+                    print("Failed to capture screenshot.")
+                    return
+                }
+                
+                let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
+                //print("image feed devices: \(devicesRequiringImageFeed)")
+                if devicesRequiringImageFeed.count > 0 {
+                    if (abs(self.transmitImageFeedTimer.timeIntervalSinceNow) >= 1.0) {
+                        self.transmitImageFeedTimer = Date()
+
+                            if let image = screenshot {
+                                if let imageData = image.jpegData(compressionQuality: 1.0) {
+                                    State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
+                                    for sourceDevice in devicesRequiringImageFeed {
+                                        print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
+                                        self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
+                                    }
                                 }
                             }
-                            //}
-                        }
+                        
                     }
                 }
-                
-                
-                //}
-            }
-             */
-             
+            }) */
         }
     }
     
-    func captureScreenshot() -> UIImage? {
-        let window = UIApplication.shared.windows.first { $0.isKeyWindow }
-        let imageSize = window?.bounds.size ?? CGSize.zero
-        
-        UIGraphicsBeginImageContextWithOptions(imageSize, true, 0)
-        window?.drawHierarchy(in: window!.bounds, afterScreenUpdates: true)
-        let image = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        
-        if let i = image {
-            return i
-        } else {
-            return nil
+    func convertUIImageToJPEGDataInBackground(image: UIImage, compressionQuality: CGFloat = 0.8, completion: @escaping (Data?) -> Void) {
+        DispatchQueue.global(qos: .userInteractive).async {
+            let jpegData = image.jpegData(compressionQuality: compressionQuality)
+            
+            // Switch back to the main queue to handle the Data
+            //DispatchQueue.global().async {
+                completion(jpegData)
+            //}
         }
-
-        // Save the image to the Photo Library or share it
     }
-
+    
+    func captureScreenshot(completion: @escaping (UIImage?) -> Void) {
+        DispatchQueue.main.async {
+            let window = UIApplication.shared.windows.first { $0.isKeyWindow }
+            let imageSize = window?.bounds.size ?? CGSize.zero
+            
+            UIGraphicsBeginImageContextWithOptions(imageSize, true, 0)
+            window?.drawHierarchy(in: window!.bounds, afterScreenUpdates: true)
+            let image = UIGraphicsGetImageFromCurrentImageContext()
+            UIGraphicsEndImageContext()
+            
+            completion(image)
+        }
+    }
+    
+    
     /*
-     func session(_ session: ARSession, didOutputCollaborationData data: ARSession.CollaborationData) {
-     //print("Sessiion data")
-     
-     guard let encodedData = try? NSKeyedArchiver.archivedData(withRootObject: data, requiringSecureCoding: true) else { fatalError("Unexpectedly failed to encode collaboration data.") }
-     channels.sendCollaborationData(encodedData)
-     
+     let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
+     //print("image feed devices: \(devicesRequiringImageFeed)")
+     if devicesRequiringImageFeed.count > 0 {
+     if (transmitImageFeedTimer.timeIntervalSinceNow == 1.0) {
+     transmitImageFeedTimer = Date()
+     DispatchQueue.main.async {
+     if let screenshot = self.captureScreenshot() {
+     if let imageData = screenshot.jpegData(compressionQuality: 1.0) {
+     State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
+     for sourceDevice in devicesRequiringImageFeed {
+     print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
+     self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
+     }
+     }
+     }
+     }
+     }
      
      }
      */
+    
+    /*
+     if State.shared.currentDeviceState.arMode == .full {
+     //DispatchQueue.main.async {
+     let scaleFactor = 0.25
+     let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
+     if devicesRequiringImageFeed.count > 0 {
+     
+     self.arView.snapshot(saveToHDR: false) { [self] image in
+     if let i = image {
+     let scaledImage = i
+     //if let scaledImage = UIImage.scale(image: i, by: scaleFactor) {
+     if let imageData = scaledImage.jpegData(compressionQuality: 1.0) {
+     State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
+     for sourceDevice in devicesRequiringImageFeed {
+     //print("Sending image feed from \(Common.getHostDevice()) to \(sourceDevice)")
+     //channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
+     }
+     }
+     //}
+     }
+     }
+     }
+     
+     
+     //}
+     }
+     */
+    
+
     
     override open var shouldAutorotate: Bool {
         return false
@@ -1520,51 +1633,13 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
         
     }
-    
-    /*
-     func startScreenRecording() {
-     let captureSession = AVCaptureSession()
-     let screenInput = AVCaptureScreenInput(displayID: UIScreen.main)
-     let screenInput = AVCaptureScreenInput()
-     
-     if captureSession.canAddInput(screenInput) {
-     captureSession.addInput(screenInput)
-     }
-     
-     let fileOutput = AVCaptureMovieFileOutput()
-     if captureSession.canAddOutput(fileOutput) {
-     captureSession.addOutput(fileOutput)
-     }
-     
-     captureSession.startRunning()
-     let fileName = "aroutput"
-     
-     do {
-     let fileManager = FileManager.default
-     
-     // Get the documents directory URL
-     let documentsDirectory = try fileManager.url(for: .documentDirectory,
-     in: .userDomainMask,
-     appropriateFor: nil,
-     create: false)
-     
-     // Create the file URL by appending the file name to the documents directory URL
-     let fileURL = documentsDirectory.appendingPathComponent(fileName)
-     
-     // Use the fileURL for any file-related operations
-     print("Local file system URL: \(fileURL)")
-     
-     fileOutput.startRecording(to: fileURL, recordingDelegate: self)
-     
-     } catch {
-     print("Error getting the documents directory URL: \(error)")
-     }
-     
-     }
-     */
-    
+
     
 }
+
+
+
+
 
 
 extension UIImage {
@@ -1730,49 +1805,6 @@ extension ViewController {
 }
 
 
-
-extension UIImage {
-    public convenience init?(pixelBuffer: CVPixelBuffer) {
-        var cgImage: CGImage?
-        VTCreateCGImageFromCVPixelBuffer(pixelBuffer, options: nil, imageOut: &cgImage)
-        
-        guard let cgImage = cgImage  else { return nil }
-        self.init(cgImage: cgImage)
-    }
-}
-
-extension MeshResource {
-    /**
-     Generate three axes of a coordinate system with x axis = red, y axis = green and z axis = blue
-     - parameters:
-     - axisLength: Length of the axes in m
-     - thickness: Thickness of the axes as a percentage of their length
-     */
-    static func generateCoordinateSystemAxes(length: Float = 0.1, thickness: Float = 2.0) -> Entity {
-        let thicknessInM = (length / 100) * thickness
-        let cornerRadius = thickness / 2.0
-        let offset = length / 2.0
-        
-        let xAxisBox = MeshResource.generateBox(size: [length, thicknessInM, thicknessInM], cornerRadius: cornerRadius)
-        let yAxisBox = MeshResource.generateBox(size: [thicknessInM, length, thicknessInM], cornerRadius: cornerRadius)
-        let zAxisBox = MeshResource.generateBox(size: [thicknessInM, thicknessInM, length], cornerRadius: cornerRadius)
-        
-        let xAxis = ModelEntity(mesh: xAxisBox, materials: [UnlitMaterial(color: .red)])
-        let yAxis = ModelEntity(mesh: yAxisBox, materials: [UnlitMaterial(color: .green)])
-        let zAxis = ModelEntity(mesh: zAxisBox, materials: [UnlitMaterial(color: .blue)])
-        
-        xAxis.position = [offset, 0, 0]
-        yAxis.position = [0, offset, 0]
-        zAxis.position = [0, 0, offset]
-        
-        let axes = Entity()
-        axes.addChild(xAxis)
-        axes.addChild(yAxis)
-        axes.addChild(zAxis)
-        return axes
-    }
-}
-
 class CommandButton: UIButton  {
     
     public typealias CommandButtonHandler = () -> Void
@@ -1785,7 +1817,7 @@ class CustomARView: ARView {
     
     func displayRawFeaturePoints(worldMap: ARWorldMap) {
         let points = worldMap.rawFeaturePoints.points
-
+        
         for point in points {
             let entity = createSphereEntity(radius: 0.001, color: .red)
             entity.transform.translation = SIMD3<Float>(point)
@@ -1795,15 +1827,58 @@ class CustomARView: ARView {
             self.scene.addAnchor(anchorEntity)
         }
     }
-
+    
     private func createSphereEntity(radius: Float, color: UIColor) -> Entity {
         let sphere = MeshResource.generateSphere(radius: radius)
         let material = SimpleMaterial(color: color, isMetallic: false)
         let modelComponent = ModelComponent(mesh: sphere, materials: [material])
-
+        
         let entity = Entity()
         entity.components[ModelComponent] = modelComponent
-
+        
         return entity
     }
 }
+
+
+/*
+ func startScreenRecording() {
+ let captureSession = AVCaptureSession()
+ let screenInput = AVCaptureScreenInput(displayID: UIScreen.main)
+ let screenInput = AVCaptureScreenInput()
+ 
+ if captureSession.canAddInput(screenInput) {
+ captureSession.addInput(screenInput)
+ }
+ 
+ let fileOutput = AVCaptureMovieFileOutput()
+ if captureSession.canAddOutput(fileOutput) {
+ captureSession.addOutput(fileOutput)
+ }
+ 
+ captureSession.startRunning()
+ let fileName = "aroutput"
+ 
+ do {
+ let fileManager = FileManager.default
+ 
+ // Get the documents directory URL
+ let documentsDirectory = try fileManager.url(for: .documentDirectory,
+ in: .userDomainMask,
+ appropriateFor: nil,
+ create: false)
+ 
+ // Create the file URL by appending the file name to the documents directory URL
+ let fileURL = documentsDirectory.appendingPathComponent(fileName)
+ 
+ // Use the fileURL for any file-related operations
+ print("Local file system URL: \(fileURL)")
+ 
+ fileOutput.startRecording(to: fileURL, recordingDelegate: self)
+ 
+ } catch {
+ print("Error getting the documents directory URL: \(error)")
+ }
+ 
+ }
+ */

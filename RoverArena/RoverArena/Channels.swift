@@ -156,6 +156,7 @@ class Channels {
     
     public func sendContentTypeToSourceDevice<T>(_ sourceDevice: SourceDevice, toServer: Bool, type: ContentType, data: T) where T : Encodable {
         
+        //print("Current device channel status: \(State.shared.currentDeviceState.channelStatus)")
         if State.shared.currentDeviceState.channelStatus != .disconnected {
             if !toServer {
                 if let device = consumerDevices[sourceDevice], let element = serverElements[type] {
@@ -202,7 +203,7 @@ class Channels {
         case .command:
             executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: Command.self, element: element)
         case .image:
-            executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: Data.self, element: element)
+            //executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: Data.self, element: element)
             processImageFromDevice(sourceDevice, element: element)
         case .state:
             State.shared.processIncomingDeviceState(data: element.dataValue)
@@ -284,7 +285,9 @@ class Channels {
             device.events.connected.handler = { [self] (device) in
                 
                 // We need to handle the onboard device here
-                State.shared.currentDeviceState.channelStatus = .controller
+                if sourceDevice == Common.shared.hubDevice() {
+                    State.shared.currentDeviceState.channelStatus = .controller
+                }
                 
                 for contentType in ContentType.allCases {
                     let element = device.attachElement(Element(identifier: contentType.rawValue, displayName: "Content Type id #\(contentType)", proto: .tcp, dataType: .Data))
@@ -362,6 +365,7 @@ class Channels {
                 element.handler = { element, device in
                     
                     if let contentType = ContentType(rawValue: element.identifier) {
+                        logVerbose("Processing incoming object from \(sourceDevice) to \(Common.currentDevice()) for content type: \(contentType)")
                         self.processObjectIncomingFromDevice(sourceDevice: sourceDevice, contentType: contentType, element: element)
                     } else {
                         fatalError("Could not handle content type")
