@@ -109,7 +109,7 @@ class DeviceStatusView: UIView {
     
     func setupState() {
         cancellable = State.shared.$devicesState.sink(receiveValue: { newValue in
-            self.refreshViews()
+            //self.refreshViews() // Handling this with the timer now
         })
     }
     
@@ -135,7 +135,9 @@ class DeviceStatusView: UIView {
                 
                 if let sourceDeviceState = State.shared.devicesState[sourceDevice] {
                     
-                    
+                    if sourceDeviceState.refreshCount > 0 && sourceDeviceState.sourceDevice != Common.currentDevice() {
+                        print("\(sourceDeviceState.sourceDevice) refresh count: \(sourceDeviceState.refreshCount)")
+                    }
                     // Uptime
                     if let launchDateLabel = self.launchDateLabels[sourceDevice] {
                         

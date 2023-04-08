@@ -18,6 +18,8 @@ import CoreGraphics
 
 class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDelegate, WorldScanDelegate, AVCaptureFileOutputRecordingDelegate {
     
+    var state = State.shared
+    
     var cancellable: AnyCancellable?
     
     var multipeerSession: MultipeerSession?
@@ -218,6 +220,11 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
         let controller = controllerDevices
         
+        
+        State.shared.currentDeviceState = State.DeviceState(sourceDevice: Common.currentDevice())
+        
+        print("Current: \(State.shared.currentDeviceState)")
+        
         var commandHandler: Channels.Handler<Any> = {_,_ in }
         
         switch deviceRole {
@@ -302,7 +309,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             }
             
             
-            channels.setupAsServer()
+            //channels.setupAsServer()
             
             
             
@@ -452,7 +459,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             print("Camera translation: \(cameraPosition)")
             
             channels.setupAsServer()
-            
+
             State.shared.currentDeviceState.requestedImageFeedSources = [.iPhone12Pro, .iPhone14ProMax]
             
         }
@@ -463,6 +470,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             }
         }
         
+        State.shared.setupCurrentDevice()
         
         sleep(1)
         
@@ -1293,12 +1301,6 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     private func sendARSessionIDToPeers() {
         let idString = arView.session.identifier.uuidString
         let command = "SessionID:" + idString
-        /*
-         if let commandData = command.data(using: .utf8) {
-         if channels.consumerDevices.count > 0 { print("Sending session ID: \(idString)") }
-         channels.sendCollaborationData(commandData)
-         }
-         */
         channels.annonceSessionID(arView.session.identifier.uuidString)
     }
     
@@ -1327,7 +1329,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     var lastTransimittedImageTime = CACurrentMediaTime()
     var accumulatedTransmissionTime: Double = 0.0
     
-    var systemFPSMonitorDisplayFrequency = 1.0 // seconds
+    var systemFPSMonitorDisplayFrequency = 5.0 // seconds
     var systemFPSMonitorTimer = Date()
     var systemFPSMonitorCount = 0.0
     
@@ -1368,7 +1370,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             } else {
                 State.shared.currentDeviceState.fps = 0.0
             }
-            
+            State.shared.currentDeviceState.worldMappingStatus = frame.worldMappingStatus
         }
         
         
@@ -1422,9 +1424,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         coordinates.text = "(\(String(format: "%.2f", destinationPoint.x)), \(String(format: "%.2f", destinationPoint.y)))"
         
         lastTrackingState = frame.camera.trackingState
-        
-        State.shared.currentDeviceState.worldMappingStatus = frame.worldMappingStatus
-        
+
         // 30 fps: 0.33333
         // Required time interval: 0.03333
         // seconds
@@ -1449,13 +1449,14 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             
             debugFrameCount += 1
             if abs(debugTestTime.timeIntervalSinceNow) > 10 {
-                //print("Debug frames processes per sec: \(debugFrameCount / 10)")
+                print("Debug frames processes per sec: \(debugFrameCount / 10)")
                 debugFrameCount = 0
                 debugTestTime = Date()
             }
             
-            if (abs(self.transmitImageFeedTimer.timeIntervalSinceNow) >= 1 / 30) {
-                self.transmitImageFeedTimer = Date()
+            // HDR
+           // if (abs(self.transmitImageFeedTimer.timeIntervalSinceNow) >= 1 / 60) {
+             //   self.transmitImageFeedTimer = Date()
                 let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
             //print("image feed devices: \(devicesRequiringImageFeed)")
                 if devicesRequiringImageFeed.count > 0 {
@@ -1477,7 +1478,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                                 
                                 for sourceDevice in devicesRequiringImageFeed {
                                     //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
-                                    self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
+                                    self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: imageData)
                                 }
                                 //State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
                                 
@@ -1487,7 +1488,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                             
                         }
                     }
-                }
+                //}
 
             }
 
