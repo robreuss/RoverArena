@@ -220,7 +220,8 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         arView.session.delegate = self
         arView.automaticallyConfigureSession = false
         
-        runFullARSession()
+        self.positionalARSession()
+        //runFullARSession()
         
         cancellable = State.shared.$currentDeviceState.sink(receiveValue: { newValue in
             DispatchQueue.main.async {
@@ -572,7 +573,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             do {
                 arPositionalConfiguration.initialWorldMap = try getWorldMap()
             } catch {
-                fatalError("Could not load world map")
+                logError("Could not load world map")
             }
             arView.session.run(arPositionalConfiguration)
             arView.isHidden = false
@@ -1531,7 +1532,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                         
                         for sourceDevice in devicesRequiringImageFeed {
                             //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
-                            //self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: pixelBufferData)
+                            self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: pixelBufferData)
                         }
                     }
                     return()
