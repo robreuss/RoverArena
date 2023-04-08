@@ -15,10 +15,13 @@ import MultipeerConnectivity
 import Combine
 import AVFoundation
 import CoreGraphics
+import MobileCoreServices
 
 class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDelegate, WorldScanDelegate, AVCaptureFileOutputRecordingDelegate {
     
     var state = State.shared
+    
+    var forcePositionalAR = false
     
     var cancellable: AnyCancellable?
     
@@ -128,16 +131,20 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
         let handler: Channels.Handler<Any> = { sourceDevice, imageData in
             if let id = imageData as? Data {
+                /*
                 if let image = self.pixelBufferToUIImage(pixelBufferData: id) {
                     videoStreamView.image = image
                 }
-                /*
+                 */
+                
+                
+                
                 if let image = UIImage(data: id) {
                     videoStreamView.image = image
                 } else {
                     logError("Recieved nil image")
                 }
-                 */
+                 
             }
         }
         print("Seeing image handler for source \(sourceDevice)")
@@ -220,9 +227,8 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         arView.session.delegate = self
         arView.automaticallyConfigureSession = false
         
-        self.positionalARSession()
-        //runFullARSession()
-        
+        runFullARSession()
+
         cancellable = State.shared.$currentDeviceState.sink(receiveValue: { newValue in
             DispatchQueue.main.async {
                 switch ProcessInfo.processInfo.thermalState {
@@ -598,6 +604,12 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     }
     
     func runFullARSession() {
+
+        if forcePositionalAR {
+            self.positionalARSession()
+            return
+        }
+        
         if State.shared.currentDeviceState.arMode != .full || State.shared.currentDeviceState.arMode == .none {
             let arConfiguration = ARWorldTrackingConfiguration()
             if State.shared.currentDeviceState.arWorldMap.count > 0 {
@@ -1399,6 +1411,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
         
         pixelFormatType = CVPixelBufferGetPixelFormatType(frame.capturedImage)
+        print("Pixel format: \(pixelFormatType)")
         /*
          if rawFeaturePointsCounter > 60 {
          getCurrentWorldMap(from: arView.session) { worldMap, error in
@@ -1517,7 +1530,25 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             //print("image feed devices: \(devicesRequiringImageFeed)")
                 if devicesRequiringImageFeed.count > 0 {
                     
+                    DispatchQueue.global(qos: .background).sync {
+                        
+                        let jpegImage = pixelBufferToJPEG(pixelBuffer: frame.capturedImage)
+                        
+                        //let height = CVPixelBufferGetHeight(frame.capturedImage)
+                        // let width = CVPixelBufferGetWidth(frame.capturedImage)
+                        //let pixelFormat = CVPixelBufferGetPixelFormatType(frame.capturedImage)
+                        //print("Image \(height)x\(width), pixelformat: \(pixelFormat)")
+                        
+                        //let pixelBufferData = pixelBufferToData(pixelBuffer: frame.capturedImage)
+                        
+                        
+                        for sourceDevice in devicesRequiringImageFeed {
+                            //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
+                            self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: jpegImage)
+                        }
+                    }
                     
+                    /*
                     DispatchQueue.global(qos: .background).sync {
                         
                         let (pixelBufferData, width, height) = self.scaledPixelBufferToData(pixelBuffer: frame.capturedImage, scale: 0.5)!
@@ -1535,6 +1566,7 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                             self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: pixelBufferData)
                         }
                     }
+                     */
                     return()
                     
                     //print("Pixel buffer data: \(pixelBufferData?.count)")
@@ -1627,6 +1659,29 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                 }
             }) */
         }
+    }
+    
+    func pixelBufferToJPEG(pixelBuffer: CVPixelBuffer) -> Data? {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let context = CIContext(options: nil)
+        
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
+            return nil
+        }
+        
+        let options: NSDictionary = [
+            kCGImageDestinationLossyCompressionQuality: 0.8
+        ]
+        
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data as CFMutableData, kUTTypeJPEG, 1, nil) else {
+            return nil
+        }
+        
+        CGImageDestinationAddImage(destination, cgImage, options)
+        CGImageDestinationFinalize(destination)
+        
+        return data as Data
     }
     
     func scaledPixelBufferToData(pixelBuffer: CVPixelBuffer, scale: CGFloat) -> (data: Data?, width: Int, height: Int)? {
