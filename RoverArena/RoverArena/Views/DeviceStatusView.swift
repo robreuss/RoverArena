@@ -98,14 +98,7 @@ class DeviceStatusView: UIView {
     var devices: [SourceDevice] = []
     
     var cancellable: AnyCancellable?
-    
-    
-    /*
-     let cancellable = SystemState.shared.$devicesState.sink { newValue in
-     refreshViews()
-     print("myProperty has changed to: \(newValue)")
-     }
-     */
+
     
     func setupState() {
         cancellable = State.shared.$devicesState.sink(receiveValue: { newValue in
@@ -136,7 +129,7 @@ class DeviceStatusView: UIView {
                 if let sourceDeviceState = State.shared.devicesState[sourceDevice] {
                     
                     if sourceDeviceState.refreshCount > 0 && sourceDeviceState.sourceDevice != Common.currentDevice() {
-                        print("\(sourceDeviceState.sourceDevice) refresh count: \(sourceDeviceState.refreshCount)")
+                        //print("\(sourceDeviceState.sourceDevice) refresh count: \(sourceDeviceState.refreshCount)")
                     }
                     // Uptime
                     if let launchDateLabel = self.launchDateLabels[sourceDevice] {

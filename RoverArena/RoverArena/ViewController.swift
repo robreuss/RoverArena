@@ -54,6 +54,8 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     var channels = Channels.shared
     var common = Common.shared
     
+    var pixelFormatType = kCVPixelFormatType_32BGRA
+    
     // var hostDevice: SourceDevice = .iPhone14ProMax
     
     var connectedSourceDevices = Set<SourceDevice>()
@@ -126,11 +128,16 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
         let handler: Channels.Handler<Any> = { sourceDevice, imageData in
             if let id = imageData as? Data {
+                if let image = self.pixelBufferToUIImage(pixelBufferData: id) {
+                    videoStreamView.image = image
+                }
+                /*
                 if let image = UIImage(data: id) {
                     videoStreamView.image = image
                 } else {
                     logError("Recieved nil image")
                 }
+                 */
             }
         }
         print("Seeing image handler for source \(sourceDevice)")
@@ -138,16 +145,62 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
     }
     
-    /* Back from using EC for collaboration
-     func setupCollaborators() {
-     
-     for sourceDevice in deviceRoles.keys {
-     if sourceDevice != Common.getHostDevice() {
-     setupCollaborationHandlerForSourceDevice(sourceDevice)
-     }
-     }
-     }
-     */
+    func pixelBufferToUIImage(pixelBufferData: Data) -> UIImage? {
+        guard let pixelBuffer = createPixelBuffer(from: pixelBufferData) else {
+            return nil
+        }
+
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let context = CIContext(options: nil)
+
+        let cgImage = context.createCGImage(ciImage, from: CGRect(x: 0, y: 0, width: width, height: height))
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)
+        guard let contextRef = CGContext(data: nil, width: width, height: height,
+                                         bitsPerComponent: 8, bytesPerRow: width * 4, space: colorSpace,
+                                         bitmapInfo: bitmapInfo.rawValue, releaseCallback: nil, releaseInfo: nil) else {
+            return nil
+        }
+
+        contextRef.draw(cgImage!, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        guard let cgImageRef = contextRef.makeImage() else {
+            return nil
+        }
+
+        let image = UIImage(cgImage: cgImageRef)
+
+        return image
+    }
+
+    func createPixelBuffer(from pixelBufferData: Data) -> CVPixelBuffer? {
+        let options: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+        ]
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(kCFAllocatorDefault,
+                                         960, // replace with the width of your pixel buffer data
+                                         720, // replace with the height of your pixel buffer data
+                                         pixelFormatType,
+                                         options as CFDictionary,
+                                         &pixelBuffer)
+        guard status == kCVReturnSuccess else {
+            return nil
+        }
+        CVPixelBufferLockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags(rawValue: 0))
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags(rawValue: 0)) }
+        let pixelData = CVPixelBufferGetBaseAddress(pixelBuffer!)
+        pixelBufferData.withUnsafeBytes { dataBytes in
+            memcpy(pixelData, dataBytes.baseAddress, pixelBufferData.count)
+        }
+        return pixelBuffer
+    }
+
     
     override var prefersStatusBarHidden: Bool {
         return true
@@ -1343,6 +1396,8 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     //let statusMapping: [ARFrame.WorldMappingStatus: State.WorldMappingStatus] = [.notAvailable: .notAvailable, .limited: .limited, .extending: .extending, .mapped: .mapped]
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         
+        
+        pixelFormatType = CVPixelBufferGetPixelFormatType(frame.capturedImage)
         /*
          if rawFeaturePointsCounter > 60 {
          getCurrentWorldMap(from: arView.session) { worldMap, error in
@@ -1455,18 +1510,40 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             }
             
             // HDR
-           // if (abs(self.transmitImageFeedTimer.timeIntervalSinceNow) >= 1 / 60) {
-             //   self.transmitImageFeedTimer = Date()
+           if (abs(self.transmitImageFeedTimer.timeIntervalSinceNow) >= 1 / 30) {
+                self.transmitImageFeedTimer = Date()
                 let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
             //print("image feed devices: \(devicesRequiringImageFeed)")
                 if devicesRequiringImageFeed.count > 0 {
                     
-                    if let image = UIImage(pixelBuffer: frame.capturedImage) {
+                    
+                    DispatchQueue.global(qos: .background).sync {
                         
-                        if let scaledImage = UIImage.scale(image: image, by: scaleFactor) {
+                        let (pixelBufferData, width, height) = self.scaledPixelBufferToData(pixelBuffer: frame.capturedImage, scale: 0.5)!
+                        
+                        //let height = CVPixelBufferGetHeight(frame.capturedImage)
+                        // let width = CVPixelBufferGetWidth(frame.capturedImage)
+                        let pixelFormat = CVPixelBufferGetPixelFormatType(frame.capturedImage)
+                        //print("Image \(height)x\(width), pixelformat: \(pixelFormat)")
+                        
+                        //let pixelBufferData = pixelBufferToData(pixelBuffer: frame.capturedImage)
+                        
+                        
+                        for sourceDevice in devicesRequiringImageFeed {
+                            //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
+                            //self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: pixelBufferData)
+                        }
+                    }
+                    return()
+                    
+                    //print("Pixel buffer data: \(pixelBufferData?.count)")
+                    
+                    if let image = UIImage(pixelBuffer: frame.capturedImage) {
+
+                        //if let scaledImage = UIImage.scale(image: image, by: scaleFactor) {
                             
                             
-                            convertUIImageToJPEGDataInBackground(image: scaledImage, compressionQuality: 0.1) { jpegData in
+                            convertUIImageToJPEGDataInBackground(image: image, compressionQuality: 0.1) { jpegData in
                                 guard let imageData = jpegData else {
                                     print("Failed to convert UIImage to JPEG data.")
                                     return
@@ -1486,9 +1563,9 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
                             }
                             
                             
-                        }
+                        //}
                     }
-                //}
+                }
 
             }
 
@@ -1551,8 +1628,53 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         }
     }
     
+    func scaledPixelBufferToData(pixelBuffer: CVPixelBuffer, scale: CGFloat) -> (data: Data?, width: Int, height: Int)? {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let scaleFilter = CIFilter(name: "CILanczosScaleTransform")!
+        scaleFilter.setValue(ciImage, forKey: kCIInputImageKey)
+        scaleFilter.setValue(scale, forKey: kCIInputScaleKey)
+        scaleFilter.setValue(1.0, forKey: kCIInputAspectRatioKey)
+        let scaledImage = scaleFilter.outputImage!
+
+        let ciContext = CIContext()
+        var scaledPixelBuffer: CVPixelBuffer?
+        CVPixelBufferCreate(nil, Int(scale * CGFloat(CVPixelBufferGetWidth(pixelBuffer))),
+                             Int(scale * CGFloat(CVPixelBufferGetHeight(pixelBuffer))),
+                             CVPixelBufferGetPixelFormatType(pixelBuffer), nil,
+                             &scaledPixelBuffer)
+
+        ciContext.render(scaledImage, to: scaledPixelBuffer!)
+
+        guard let scaledData = pixelBufferToData(pixelBuffer: scaledPixelBuffer!) else {
+            return nil
+        }
+
+        return (data: scaledData, width: CVPixelBufferGetWidth(scaledPixelBuffer!), height: CVPixelBufferGetHeight(scaledPixelBuffer!))
+    }
+    
+    func pixelBufferToData(pixelBuffer: CVPixelBuffer) -> Data? {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, CVPixelBufferLockFlags(rawValue: 0))
+
+        let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer)
+        let bufferSize = CVPixelBufferGetDataSize(pixelBuffer)
+
+        guard let data = CFDataCreate(nil, baseAddress, bufferSize) else {
+            CVPixelBufferUnlockBaseAddress(pixelBuffer, CVPixelBufferLockFlags(rawValue: 0))
+            return nil
+        }
+
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, CVPixelBufferLockFlags(rawValue: 0))
+
+        return data as Data
+    }
+    
     func convertUIImageToJPEGDataInBackground(image: UIImage, compressionQuality: CGFloat = 0.8, completion: @escaping (Data?) -> Void) {
         DispatchQueue.global(qos: .userInteractive).async {
+        //DispatchQueue.global(qos: .background).async {
             let jpegData = image.jpegData(compressionQuality: compressionQuality)
             
             // Switch back to the main queue to handle the Data
