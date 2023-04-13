@@ -63,7 +63,8 @@ class Channels {
         case command = 1
         case image = 2
         case state = 3
-        case collaboration = 4
+        case cameraTransform = 4
+        case collaboration = 5
     }
     
     var consumerIdentity = ""
@@ -100,7 +101,7 @@ class Channels {
             imageAlreadySent = false
         }
     }
-    var imageProcessingFPS: Double = 30
+    var imageProcessingFPS: Double = 60
     var imageAlreadySent = true // false will break this
     
     init() {
@@ -168,6 +169,35 @@ class Channels {
         
     }
     
+
+    func sendUsingDevice(_ device: Device, _ element: Element) {
+        if device.isConnected {
+            do {
+                try device.send(element: element)
+            } catch {
+                logError("Transmission failed to device: \(device.displayName)")
+            }
+        } else {
+            print("Attempt to send with no connection")
+        }
+    }
+    
+    public func sendCameraTransformToHub(_ sourceDevice: SourceDevice, cameraTransform: simd_float4x4) {
+
+        if let deviceContainer = serverDevices[sourceDevice.rawValue], let elementContainer = consumerElements[ContentType.cameraTransform.rawValue] {
+
+            let tuple = matrixToTuple(matrix: cameraTransform)
+            //let matrix = MatrixData(matrix: cameraTransform)
+            //let jsonData = try! JSONEncoder().encode(matrix)
+            elementContainer.element.tuple4x4Value = tuple
+            sendUsingDevice(deviceContainer.device as! ServerDevice, elementContainer.element)
+            
+        } else {
+            //logError("Unable to send \(consumerElements[ContentType.cameraTransform.rawValue] ) using EC device \(serverDevices[sourceDevice.rawValue]) as source device: \(sourceDevice)")
+        }
+        
+    }
+    
     public func sendContentTypeToSourceDevice<T>(_ sourceDevice: SourceDevice, toServer: Bool, type: ContentType, data: T) where T : Encodable {
         
         //print("Current device channel status: \(State.shared.currentDeviceState.channelStatus)")
@@ -186,39 +216,27 @@ class Channels {
             fatalError("Encoding of data failed")
         }
         
-        if State.shared.currentDeviceState.channelStatus != .disconnected {
-            if !toServer {
-                if let deviceContainer = consumerDevices[sourceDevice.rawValue], let elementContainer = serverElements[type.rawValue] {
-                    let element = elementContainer.element
-                    element.dataValue = processedData
-                    sendUsingDevice(deviceContainer.device as! ClientDevice, element)
-                    logVerbose("Send server type \(type) element \(serverElements[type.rawValue] ) using EC device \(deviceContainer.device) to source device: \(sourceDevice)")
+        if !toServer {
+            if let deviceContainer = consumerDevices[sourceDevice.rawValue], let elementContainer = serverElements[type.rawValue] {
+                let element = elementContainer.element
+                element.dataValue = processedData
+                sendUsingDevice(deviceContainer.device as! ClientDevice, element)
+                logVerbose("Send server type \(type) element \(serverElements[type.rawValue] ) using EC device \(deviceContainer.device) to source device: \(sourceDevice)")
 
-                } else {
-                    //logError("Unable to send server element \(serverElements[type.rawValue] ) using EC device \(consumerDevices[sourceDevice]) to source device: \(sourceDevice)")
-                }
-                
             } else {
-                if let deviceContainer = serverDevices[sourceDevice.rawValue], let elementContainer = consumerElements[type.rawValue] {
-                    let element = elementContainer.element
-                    element.dataValue = processedData
-                    sendUsingDevice(deviceContainer.device as! ServerDevice, element)
-                } else {
-                    logError("Unable to send \(consumerElements[type.rawValue] ) using EC device \(serverDevices[sourceDevice.rawValue]) as source device: \(sourceDevice)")
-                }
+                //logError("Unable to send server element \(serverElements[type.rawValue] ) using EC device \(consumerDevices[sourceDevice]) to source device: \(sourceDevice)")
             }
-        }
-        
-        
-        func sendUsingDevice(_ device: Device, _ element: Element) {
             
-            // if device.isConnected {
-            do {
-                try device.send(element: element)
-            } catch {
-                logError("\(type) transmission failed to device: \(sourceDevice.rawValue)")
+        } else {
+            if let deviceContainer = serverDevices[sourceDevice.rawValue], let elementContainer = consumerElements[type.rawValue] {
+                let element = elementContainer.element
+                element.dataValue = processedData
+                sendUsingDevice(deviceContainer.device as! ServerDevice, element)
+            } else {
+                //logError("Unable to send \(consumerElements[type.rawValue] ) using EC device \(serverDevices[sourceDevice.rawValue]) as source device: \(sourceDevice)")
             }
         }
+
         
     }
 
@@ -237,6 +255,11 @@ class Channels {
             executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: State.DeviceState.self, element: element)
         case .collaboration:
             executeHandler(sourceDevice: sourceDevice, contentType: contentType, dataType: Data.self, element: element)
+        case .cameraTransform:
+            if let tuple = element.tuple4x4Value {
+                State.shared.devicesCameraTransforms[sourceDevice] = tupleToSimdFloat4x4(tuple)
+                //print("\(sourceDevice) camera transform: \(State.shared.devicesCameraTransforms[sourceDevice])")
+            }
         }
         
     }
@@ -270,6 +293,29 @@ class Channels {
 
     func annonceSessionID(_ sessionID: String) {
         State.shared.currentDeviceState.sessionIdentifier = sessionID
+    }
+    
+    
+    func createElement(contentType: ContentType, device: Device, sourceDevice: SourceDevice) -> Element {
+     
+        var elementDataType = ElementDataType.Data
+        if contentType == .cameraTransform {
+            elementDataType = ElementDataType.Tuple4x4Float
+        } else {
+            elementDataType = ElementDataType.Data
+        }
+        
+        let element = device.attachElement(Element(identifier: contentType.rawValue, displayName: "Content Type id #\(contentType) - eid: \(contentType.rawValue)", proto: .tcp, dataType: elementDataType))
+        element.handler = { element, device in
+            
+            if let contentType = ContentType(rawValue: element.identifier) {
+                self.processObjectIncomingFromDevice(sourceDevice: sourceDevice, contentType: contentType, element: element)
+            } else {
+                fatalError("Could not handle content type")
+            }
+        }
+        
+        return element
     }
     
     public func setupConsumerOfServerDevice(_ sourceDevice: SourceDevice) {
@@ -317,18 +363,8 @@ class Channels {
 
                 for contentType in ContentType.allCases {
                     
-                    let element = device.attachElement(Element(identifier: contentType.rawValue, displayName: "Content Type id #\(contentType) - eid: \(contentType.rawValue)", proto: .tcp, dataType: .Data))
-                    print("Attaching element for \(contentType) with EID \(contentType.rawValue)")
-                    
-                    element.handler = { element, device in
-                        
-                        if let contentType = ContentType(rawValue: element.identifier) {
-                            self.processObjectIncomingFromDevice(sourceDevice: sourceDevice, contentType: contentType, element: element)
-                        } else {
-                            fatalError("Could not handle content type")
-                        }
-                    }
-                    
+                    let element = self.createElement(contentType: contentType, device: device, sourceDevice: sourceDevice)
+
                     consumerElements[contentType.rawValue] = ElementContainer(element: element)
 
                     print("Consumer elements: \(self.consumerElements)")
@@ -392,23 +428,12 @@ class Channels {
             print("Client device \(clientDevice.displayName) (source: \(sourceDevice.rawValue) connected to \(Common.currentDevice()) -> other: \(clientDevice))")
             
             self.consumerDevices[sourceDevice.rawValue] = ClientDeviceContainer(device: device as! ClientDevice)
-            
+
             for contentType in ContentType.allCases {
-                
-                let element = device.attachElement(Element(identifier: contentType.rawValue, displayName: "Content Type id #\(contentType)", proto: .tcp, dataType: .Data))
-                print("Attaching element for \(contentType) with EID \(contentType.rawValue)")
-                element.handler = { element, device in
-                    
-                    if let contentType = ContentType(rawValue: element.identifier) {
-                        logVerbose("Processing incoming object from \(sourceDevice) to \(Common.currentDevice()) for content type: \(contentType)")
-                        self.processObjectIncomingFromDevice(sourceDevice: sourceDevice, contentType: contentType, element: element)
-                    } else {
-                        fatalError("Could not handle content type")
-                    }
-                }
+
+                let element = self.createElement(contentType: contentType, device: device, sourceDevice: sourceDevice)
                 
                 self.serverElements[contentType.rawValue] = ElementContainer(element: element)
-
 
             }
             
@@ -431,6 +456,14 @@ class Channels {
             sendContentTypeToSourceDevice(Common.sourceDeviceFromString(deviceName: sourceDevice), toServer: false, type: type, data: data)
         }
         
+    }
+    
+    func matrixToTuple(matrix: simd_float4x4) -> (Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float) {
+        let m = matrix.columns
+        return (m.0.x, m.0.y, m.0.z, m.0.w,
+                m.1.x, m.1.y, m.1.z, m.1.w,
+                m.2.x, m.2.y, m.2.z, m.2.w,
+                m.3.x, m.3.y, m.3.z, m.3.w)
     }
 
     struct MatrixData: Encodable {
@@ -485,70 +518,10 @@ class Channels {
         }
     }
     
-    
-    
+    func tupleToSimdFloat4x4(_ tuple: (Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float, Float)) -> simd_float4x4 {
+        var mutableTuple = tuple
+        let data = Data(buffer: UnsafeBufferPointer(start: &mutableTuple.0, count: 16))
+        return data.withUnsafeBytes { $0.load(as: simd_float4x4.self) }
+    }
+        
 }
-
-/*========== Copilot Suggestion 1/1
-extension ServerController: NetServiceDelegate {
-    
-    public func netServiceDidPublish(_ sender: NetService) {
-        logDebug("Published service: \(sender.name)")
-        logDebug("Service type: \(sender.type)")
-        logDebug("Service domain: \(sender.domain)")
-        logDebug("Service port: \(sender.port)")
-        
-        //self.service = sender
-        //self.service.delegate = self
-        //self.service.resolve(withTimeout: 5.0)
-        
-    }
-    
-    public func netService(_ sender: NetService, didNotPublish errorDict: [String : NSNumber]) {
-        logDebug("Service did not publish: \(errorDict)")
-    }
-    
-    public func netServiceDidResolveAddress(_ sender: NetService) {
-        logDebug("Resolved service: \(sender.name)")
-        logDebug("Service type: \(sender.type)")
-        logDebug("Service domain: \(sender.domain)")
-        logDebug("Service port: \(sender.port)")
-        logDebug("Service addresses: \(sender.addresses)")
-        
-        //self.service = sender
-        //self.service.delegate = self
-        //self.service.resolve(withTimeout: 5.0)
-        
-    }
-    
-    public func netService(_ sender: NetService, didNotResolve errorDict: [String : NSNumber]) {
-        logDebug("Service did not resolve: \(errorDict)")
-    }
-    
-    public func netService(_ sender: NetService, didAcceptConnectionWith inputStream: InputStream, outputStream: OutputStream) {
-        logDebug("Accepted connection from \(sender.name)")
-        
-        //self.inputStream = inputStream
-        //self.outputStream = outputStream
-        
-        //self.inputStream?.delegate = self
-        //self.outputStream?.delegate = self
-        
-        //self.inputStream?.schedule(in: RunLoop.current, forMode: .common)
-        //self.outputStream?.schedule(in: RunLoop.current, forMode: .common)
-        
-        //self.inputStream?.open()
-        //self.outputStream?.open()
-        
-    }
-    
-    public func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
-        logDebug("Found service: \(service.name)")
-        logDebug("Service type: \(service.type)")
-        logDebug("Service domain: \(service.domain)")
-        logDebug("Service port: \(service.port)")
-        
-        //self.service = service
-        //self.service.delegate = self
-
-*///======== End of Copilot Suggestion

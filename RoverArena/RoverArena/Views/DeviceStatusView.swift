@@ -359,7 +359,7 @@ class DeviceStatusView: UIView {
                             arModeLabel.blink = false
                             
                         case .full:
-                            arModeLabel.backgroundColor = darkGreen
+                            arModeLabel.backgroundColor = darkBlue
                             arModeLabel.blink = false
                             
                         case .paused:
@@ -367,7 +367,7 @@ class DeviceStatusView: UIView {
                             arModeLabel.blink = false
                             
                         case .positional:
-                            arModeLabel.backgroundColor = darkYellow
+                            arModeLabel.backgroundColor = darkGreen
                             arModeLabel.blink = false
                         }
                         

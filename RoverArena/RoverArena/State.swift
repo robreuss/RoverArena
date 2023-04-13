@@ -27,13 +27,78 @@ class State: ObservableObject {
         addObservers()
         
         
+        // Create a custom queue for running the timer on a background thread
+        let timerQueue = DispatchQueue(label: "com.simplyformed.timerQueue")
+
+        // Create and schedule the timer on the custom queue
+        timerQueue.async {
+            let timer = DispatchSource.makeTimerSource(queue: timerQueue)
+            timer.schedule(deadline: .now(), repeating: .milliseconds(500), leeway: .milliseconds(100))
+
+            // Define the timer action
+            timer.setEventHandler {
+                State.shared.currentDeviceState.refreshCount += 1
+
+                //print("Current state: \(State.shared.currentDeviceState)")
+                
+                if Common.isHub() {
+                    //State.shared.currentDeviceState.requestedImageFeedSources = [.iPhone12Pro, .iPhone14ProMax]
+                }
+                
+                State.shared.currentDeviceState.batteryState = EncodableBatteryState(batteryState: UIDevice.current.batteryState)
+                State.shared.currentDeviceState.thermalState = EncodableThermalState(thermalState: ProcessInfo.processInfo.thermalState)
+                
+                self.devicesState[Common.currentDevice()] = State.shared.currentDeviceState
+                
+                if Common.isHub() {
+                    
+                    /*
+                    print("Server elements: \(Channels.shared.serverElements)")
+                    print("Consumer elements: \(Channels.shared.consumerElements)")
+                    
+                    print("Consumer devices: \(Channels.shared.consumerDevices)")
+                    print("Server devices: \(Channels.shared.serverDevices)")
+                    if let stateElementContainer = Channels.shared.serverElements[Channels.ContentType.state.rawValue] {
+                        print("state handler: \(stateElementContainer.element.handler)")
+                    } else {
+                        print("no state element container")
+                    }
+    */
+                    
+                    self.updateDevicesWithHubState()
+                } else {
+                    /*
+                    print("Server elements: \(Channels.shared.serverElements)")
+                    print("Consumer elements: \(Channels.shared.consumerElements)")
+                    
+                    print("Consumer devices: \(Channels.shared.consumerDevices)")
+                    print("Server devices: \(Channels.shared.serverDevices)")
+                     */
+                    Channels.shared.reportDeviceStatusToHubDevice()
+                }
+            }
+
+            // Start the timer
+            timer.resume()
+
+            // To cancel the timer at some point, call `timer.cancel()`
+            // Note: Make sure to cancel the timer from the same queue it was created on
+        }
+
+        
+        /*
         let refreshTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
             
             State.shared.currentDeviceState.refreshCount += 1
 
             //print("Current state: \(State.shared.currentDeviceState)")
             
-            //State.shared.currentDeviceState.requestedImageFeedSources = [.iPhone12Pro, .iPhone14ProMax]
+            if Common.isHub() {
+                //State.shared.currentDeviceState.requestedImageFeedSources = [.iPhone12Pro, .iPhone14ProMax]
+            }
+            
+            State.shared.currentDeviceState.batteryState = EncodableBatteryState(batteryState: UIDevice.current.batteryState)
+            State.shared.currentDeviceState.thermalState = EncodableThermalState(thermalState: ProcessInfo.processInfo.thermalState)
             
             self.devicesState[Common.currentDevice()] = State.shared.currentDeviceState
             
@@ -66,7 +131,7 @@ class State: ObservableObject {
 
 
         }
-
+*/
 /*
         cancellable = $devicesState.sink { newValue in
             self.updateDevicesWithHubState()
@@ -160,8 +225,31 @@ class State: ObservableObject {
     }
 
     struct DeviceState: Encodable, Decodable, Equatable {
-        //let statusMappingToString: [ARFrame.WorldMappingStatus: String] = [.notAvailable: "Not Available", .limited: "Limited", .extending: "Extending", .mapped: "Mapped"]
 
+        enum CodingKeys: String, CodingKey {
+            case refreshCount
+            case launchDate
+            case refreshUI
+            case sourceDevice
+            case sessionIdentifier
+            case deviceP2PConnectedStatus
+            case worldMappingStatus
+            case arMode
+            case arWorldMap
+            case thermalState
+            case batteryLevel
+            case batteryState
+            case activeImageFeeds
+            case requestedImageFeedSources
+            case videoSourceDisplaying
+            case fps
+            case channelStatus
+        }
+        
+        // Not codable
+        var cameraTransform = simd_float4x4()
+    
+        // Codable
         var refreshCount = 0
         var launchDate: Date?
         
@@ -175,6 +263,7 @@ class State: ObservableObject {
         var arMode: ARMode = .none
         var arWorldMap = Data()
         
+
         var thermalState = EncodableThermalState(thermalState: .nominal)
         var batteryLevel: Float = 0.0
         var batteryState = EncodableBatteryState(batteryState: .unknown)
@@ -225,6 +314,7 @@ class State: ObservableObject {
     }
 
     var lastSentDeviceState = DeviceState()
+    var devicesCameraTransforms: [SourceDevice: simd_float4x4] = [:]
     @Published var devicesState: [SourceDevice: DeviceState] = [:]
     @Published var currentDeviceState = DeviceState(sourceDevice: Common.currentDevice()) {
         didSet {
@@ -281,7 +371,7 @@ class State: ObservableObject {
     
     public func updateDevicesWithHubState() {
         if Common.isHub() {
-            for sourceDevice in allOtherDevices  {
+            for sourceDevice in Common.shared.allOtherDevices  {
                 if !Common.isHub(sourceDevice: sourceDevice) {
                     let c = currentDeviceState
                     Channels.shared.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: Channels.ContentType.state, data: currentDeviceState)
@@ -299,20 +389,7 @@ class State: ObservableObject {
         if let deviceState = devicesState[sourceDeviceForState] {
             Channels.shared.sendContentTypeToSourceDevice(device, toServer: false, type: Channels.ContentType.state, data: deviceState)
         }
-    }
-    
-    // Convienance variable that gives all source devices excluding current
-    var allOtherDevices: [SourceDevice] {
-        
-        var allOtherDevices: [SourceDevice] = []
-        for sourceDevice in SourceDevice.allCases  {
-            if !sourceDevice.isCurrentDevice() && sourceDevice != .none {
-                allOtherDevices.append(sourceDevice)
-            }
-        }
-        return allOtherDevices
-    }
-    
+    }   
     
     // Hub uses this to send updated a device state to all devices
     public func broadcastStateForDevice(_ sourceDeviceForState: SourceDevice) {
@@ -321,7 +398,7 @@ class State: ObservableObject {
             fatalError("Attempt to broadcast device state by non-hub device")
         }
         logVerbose("\(Common.currentDevice()) broadcasting state for device \(sourceDeviceForState)")
-        for destinationSourceDevice in allOtherDevices {
+        for destinationSourceDevice in Common.shared.allOtherDevices {
             if sourceDeviceForState != destinationSourceDevice {
                 sendDeviceStateForDevice(sourceDeviceForState, to: destinationSourceDevice)
             }

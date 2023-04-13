@@ -16,12 +16,15 @@ import Combine
 import AVFoundation
 import CoreGraphics
 import MobileCoreServices
+import ImageIO
 
 class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDelegate, WorldScanDelegate, AVCaptureFileOutputRecordingDelegate {
     
     var state = State.shared
     
     var forcePositionalAR = false
+    var standardViewWidth = 1920.0
+    var standardViewHeight = 1080.0
     
     var cancellable: AnyCancellable?
     
@@ -29,7 +32,8 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     var peerSessionIDs = [MCPeerID: String]()
     
     var sessionIDObservation: NSKeyValueObservation?
-    
+
+
     @IBOutlet weak var arView: CustomARView!
     
     @IBOutlet weak var coordinates: UILabel!
@@ -124,16 +128,15 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
      }
      */
     
-    
-    
-    
+    var originalARViewSize: CGSize = CGSizeZero
     func setupImageHandlerFromSourceDevice(_ sourceDevice: SourceDevice, _ videoStreamView: VideoStreamView) {
         
         let handler: Channels.Handler<Any> = { sourceDevice, imageData in
             if let id = imageData as? Data {
+                
                 /*
                 if let image = self.pixelBufferToUIImage(pixelBufferData: id) {
-                    videoStreamView.image = image
+                    videoStreamView.pixelBuffer(pixelBuffer: id)
                 }
                  */
                 
@@ -151,6 +154,62 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         channels.setHandler(handler, forContentType: .image, sourceDevice: sourceDevice)
         
     }
+    
+    /*
+    var originalARViewSize: CGSize = CGSizeZero
+    func setupImageHandlerFromSourceDevice(_ sourceDevice: SourceDevice, _ videoStreamView: VideoStreamView) {
+        
+        let handler: Channels.Handler<Any> = { [self] sourceDevice, imageData in
+            if let id = imageData as? Data {
+                /*
+                if let image = self.pixelBufferToUIImage(pixelBufferData: id) {
+                    videoStreamView.image = image
+                }
+                 */
+                
+                
+                
+                if let image = UIImage(data: id) {
+                    
+                    if arView.bounds.size.width > 0 {
+                        videoStreamView.image = image
+                        return
+                        //let scaledImage = UIImage.scale(image: image, by: 0.10)
+                        //let percentage = originalARViewSize.height / image.size.height
+                        //let newWidth = originalARViewSize.width * percentage
+
+                        let imageAspectRatio = image.size.width / image.size.height // The aspect ratio of the image
+
+                        let newWidth = originalARViewSize.height * imageAspectRatio // Calculate the width of the image based on the aspect ratio
+                        //imageView.frame = CGRect(x: 0, y: 0, width: imageWidth, height: viewHeight)
+                        
+                        //print("Width from \(arView.bounds.size.width) to \(originalARViewSize.width) to \(newWidth), percentage: \(percentage)")
+                        let scaledImage = UIImage.scale(image: image, width: newWidth, height: originalARViewSize.height)
+                        let backgroundImage = UIColor(patternImage: scaledImage!)
+                        arView.environment.background = .color(backgroundImage)
+                        arView.frame = CGRectMake(arView.frame.origin.x, arView.frame.origin.y, newWidth, originalARViewSize.height)
+                        
+                        print("Changing arview width from \(arView.bounds.size.width) from \(originalARViewSize.width) to \(newWidth)")
+                        //arView.bounds.size = CGSizeMake(imageWidth, arView.bounds.size.height)
+                        NSLayoutConstraint.deactivate(arView.constraints)
+                        NSLayoutConstraint.activate([
+                            arView.leadingAnchor.constraint(equalTo: topView.leadingAnchor, constant: screenEdgeMargins),
+                            arView.topAnchor.constraint(equalTo: topView.topAnchor, constant: screenEdgeMargins),
+                            arView.widthAnchor.constraint(equalToConstant: newWidth),
+                            arView.heightAnchor.constraint(equalToConstant: originalARViewSize.height),
+                        ])
+                    }
+                } else {
+                    logError("Recieved nil image")
+                }
+                 
+            }
+        }
+        print("Seeing image handler for source \(sourceDevice)")
+        channels.setHandler(handler, forContentType: .image, sourceDevice: sourceDevice)
+        
+    }
+     */
     
     func pixelBufferToUIImage(pixelBufferData: Data) -> UIImage? {
         guard let pixelBuffer = createPixelBuffer(from: pixelBufferData) else {
@@ -217,16 +276,27 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         return true
     }
     
+    override func viewWillAppear(_ animated: Bool) {
+
+    }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        startCameraTransformTimer()
+        
+        //originalARViewSize = arView.bounds.size
+        originalARViewSize = CGSizeMake(500, 319)
+        
+        var videoStreamViewWidth: CGFloat = originalARViewSize.width
+        var videoStreamViewHeight: CGFloat = originalARViewSize.height
         
         //ElementalController.loggerLogLevel = .Verbose
         
         State.shared.operationalBrightness = 0.5
         arView.session.delegate = self
         arView.automaticallyConfigureSession = false
-        
+        //arView.contentMode = .scaleAspectFit
         runFullARSession()
 
         cancellable = State.shared.$currentDeviceState.sink(receiveValue: { newValue in
@@ -292,14 +362,24 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         case .none:
             fatalError("Attempt to configure a device referenced as .none")
             
-        case .onboard:
-            print("Got onboard")
-            
         case .tripod:
             print("Got tripod")
             
-        case .controller:
+        case .controller, .onboard:
             
+            //videoStreamViewWidth = 1920
+            //videoStreamViewHeight = 1080
+            
+            arView.removeFromSuperview()
+            topView.addSubview(arView)
+            arView.frame = CGRectMake(0.0, 0.0, view.bounds.size.width, view.bounds.size.height)
+            arView.translatesAutoresizingMaskIntoConstraints = false // This is necessary to enable auto layout
+            NSLayoutConstraint.activate([
+                arView.leadingAnchor.constraint(equalTo: topView.leadingAnchor, constant: screenEdgeMargins),
+                arView.topAnchor.constraint(equalTo: topView.topAnchor, constant: screenEdgeMargins),
+                arView.widthAnchor.constraint(equalToConstant: videoStreamViewWidth),
+                arView.heightAnchor.constraint(equalToConstant: videoStreamViewHeight)
+            ])
             
             if Common.currentDevice() != hubDevice {
                 channels.setupConsumerOfServerDevice(hubDevice)
@@ -347,8 +427,6 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             setupLocalGameControllerHandlers()
             gameController.discoverGameController()
             
-            
-            
             commandHandler = {  [self]  sourceDevice, co in
                 
                 if let commandObject = co as? Channels.Command {
@@ -376,9 +454,15 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         case .hub:
             
             let margins: CGFloat = 10.0
-            let videoStreamViewWidth: CGFloat = 633.0
-            let videoStreamViewHeight: CGFloat = 293.0
+            //let videoStreamViewWidth: CGFloat = 633.0
+            //let videoStreamViewHeight: CGFloat = 293.0
             
+            
+            // 1920 x 1080
+            
+
+
+
             videoStreamViewOnboard.frame = CGRectMake(0.0, 0.0, videoStreamViewWidth, videoStreamViewHeight)
             videoStreamViewOnboard.isHidden = false
             videoStreamViewOnboard.translatesAutoresizingMaskIntoConstraints = false // This is necessary to enable auto layout
@@ -581,6 +665,15 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             } catch {
                 logError("Could not load world map")
             }
+            if let videoFormat = ARPositionalTrackingConfiguration.supportedVideoFormats.sorted { ($0.imageResolution.width * $0.imageResolution.height) < ($1.imageResolution.width * $1.imageResolution.height) }.last{
+                arPositionalConfiguration.videoFormat = videoFormat
+            }
+            /*
+            if let firstFormat = ARWorldTrackingConfiguration.supportedVideoFormats.first {
+                arPositionalConfiguration.videoFormat = firstFormat
+            }
+             */
+            arPositionalConfiguration.worldAlignment = .gravityAndHeading
             arView.session.run(arPositionalConfiguration)
             arView.isHidden = false
             
@@ -605,13 +698,14 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     
     func runFullARSession() {
 
-        if forcePositionalAR {
+        if forcePositionalAR || Common.isOnboard() {
             self.positionalARSession()
             return
         }
         
         if State.shared.currentDeviceState.arMode != .full || State.shared.currentDeviceState.arMode == .none {
             let arConfiguration = ARWorldTrackingConfiguration()
+     
             if State.shared.currentDeviceState.arWorldMap.count > 0 {
                 do {
                     arConfiguration.initialWorldMap = try getWorldMap()
@@ -622,9 +716,14 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             arConfiguration.planeDetection = [.horizontal]
             arConfiguration.environmentTexturing = .automatic
             arConfiguration.isCollaborationEnabled = true
+            arConfiguration.isAutoFocusEnabled = true
+            arConfiguration.worldAlignment = .gravityAndHeading
             arView.session.run(arConfiguration)
             arView.isHidden = false
             
+            //arView.environment.background = .color(UIColor.gray)
+
+            //let backgroundTexture = try! TextureResource.load(named: "MyBackgroundImage.jpg")
             
             let device = Common.shared.unwrappedDeviceType(.hub)
             if !device.isCurrentDevice() {
@@ -1363,6 +1462,19 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         
     }
     
+    func session(_ session: ARSession, didOutputCollaborationData data: ARSession.CollaborationData) {
+        
+        if let encodedCollaborationData = try? NSKeyedArchiver.archivedData(withRootObject: data, requiringSecureCoding: true) {
+            
+            if let collaborationData = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARSession.CollaborationData.self, from: encodedCollaborationData) {
+                //print("Collaboration: \(collaborationData.)")
+                //arView.session.update(with: collaborationData)
+                return
+            }
+        }
+        
+    }
+    
     
     private func sendARSessionIDToPeers() {
         let idString = arView.session.identifier.uuidString
@@ -1370,12 +1482,22 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         channels.annonceSessionID(arView.session.identifier.uuidString)
     }
     
-    
-    
-    
+
     //var fpsTimer = Date()
     //var fpsCount = 0
     
+    
+    var cameraTransformTimer: Timer?
+    
+    func startCameraTransformTimer() {
+        if !Common.isHub() {
+            cameraTransformTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { _ in
+                if let frame = self.arView.session.currentFrame {
+                    //Channels.shared.sendCameraTransformToHub(Common.shared.hubDevice(), cameraTransform: frame.camera.transform)
+                }
+            }
+        }
+    }
     
     
     var lastTrackingState: ARCamera.TrackingState?
@@ -1409,42 +1531,52 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
     //let statusMapping: [ARFrame.WorldMappingStatus: State.WorldMappingStatus] = [.notAvailable: .notAvailable, .limited: .limited, .extending: .extending, .mapped: .mapped]
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         
-        
-        pixelFormatType = CVPixelBufferGetPixelFormatType(frame.capturedImage)
-        print("Pixel format: \(pixelFormatType)")
         /*
-         if rawFeaturePointsCounter > 60 {
-         getCurrentWorldMap(from: arView.session) { worldMap, error in
-         guard let worldMap = worldMap else {
-         print("Failed to get world map: \(error?.localizedDescription ?? "Unknown error")")
-         return
-         }
-         self.arView.displayRawFeaturePoints(worldMap: worldMap)
-         }
-         rawFeaturePointsCounter = 0
-         }
-         rawFeaturePointsCounter += 1
-         */
-        
-        //print("Ar session state: \(session.currentFrame)")
-        
-        systemFPSMonitorCount += 1
-        if abs(systemFPSMonitorTimer.timeIntervalSinceNow) >= systemFPSMonitorDisplayFrequency {
-            let fps = (systemFPSMonitorCount / systemFPSMonitorDisplayFrequency)
-            //print("System FPS: \(fps) - Total Frames in \(systemFPSMonitorDisplayFrequency) seconds: \(systemFPSMonitorCount)")
-            systemFPSMonitorCount = 0
-            systemFPSMonitorTimer = Date()
-            if State.shared.currentDeviceState.arMode == .full {
-                State.shared.currentDeviceState.fps = Float(fps)
-            } else {
-                State.shared.currentDeviceState.fps = 0.0
+        if (abs(self.transmitImageFeedTimer.timeIntervalSinceNow) >= 1 / 15) {
+             self.transmitImageFeedTimer = Date()
+             let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
+         //print("image feed devices: \(devicesRequiringImageFeed)")
+            if devicesRequiringImageFeed.count > 0 {
+                
+                
+                DispatchQueue.global(qos: .userInitiated).async {
+                    
+                    //print("Pixel buffer size: \(CVPixelBufferGetDataSize(frame.capturedImage))")
+                    
+                    let jpegImage = self.pixelBufferToJPEG(pixelBuffer: frame.capturedImage)
+                    
+                    //let height = CVPixelBufferGetHeight(frame.capturedImage)
+                    //let width = CVPixelBufferGetWidth(frame.capturedImage)
+                    //let pixelFormat = CVPixelBufferGetPixelFormatType(frame.capturedImage)
+                    //print("Image \(height)x\(width), pixelformat: \(pixelFormat)")
+                    
+                    //let pixelBufferData = pixelBufferToData(pixelBuffer: frame.capturedImage)
+                    
+                    DispatchQueue.main.async {
+                        for sourceDevice in devicesRequiringImageFeed {
+                            //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
+                            /*
+                             if let (pixelData, _, _) = self.scaledPixelBufferToData(pixelBuffer: frame.capturedImage, scale: 0.30) {
+                             print("Pixel Data: \(pixelData!.count)")
+                             self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: pixelData)
+                             }
+                             */
+                            //print("Jpeg: \(jpegImage?.count)")
+                            
+                            self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: jpegImage)
+                        }
+                    }
+                }
+
             }
-            State.shared.currentDeviceState.worldMappingStatus = frame.worldMappingStatus
-        }
+
+         }
         
         
-        let timePerFrame = 1.0 / Double(channels.imageProcessingFPS)
         
+        return
+         */
+
         //channels.localDeviceState.worldMappingStatus = frame.worldMappingStatus.rawValue
         /*
          switch frame.worldMappingStatus {
@@ -1460,34 +1592,39 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
          */
         
         
+        /*
+        arView.session.getCurrentWorldMap(completionHandler: { worldMap, error in
+            guard let map = worldMap else {
+                print("Error getting world map: \(error!.localizedDescription)")
+                return
+            }
+
+            print("World map: \(map)")
+        })
+        */
+
+
+        systemFPSMonitorCount += 1
+        if abs(systemFPSMonitorTimer.timeIntervalSinceNow) >= systemFPSMonitorDisplayFrequency {
+            let fps = (systemFPSMonitorCount / systemFPSMonitorDisplayFrequency)
+            //print("System FPS: \(fps) - Total Frames in \(systemFPSMonitorDisplayFrequency) seconds: \(systemFPSMonitorCount)")
+            systemFPSMonitorCount = 0
+            systemFPSMonitorTimer = Date()
+            if State.shared.currentDeviceState.arMode == .full || State.shared.currentDeviceState.arMode == .positional {
+                State.shared.currentDeviceState.fps = Float(fps)
+            } else {
+                State.shared.currentDeviceState.fps = 0.0
+            }
+            State.shared.currentDeviceState.worldMappingStatus = frame.worldMappingStatus
+        }
+        
+        
+        let timePerFrame = 1.0 / Double(channels.imageProcessingFPS)
+
+
         currentCameraPosition = CGPointMake(CGFloat(arView.cameraTransform.translation.x), CGFloat(arView.cameraTransform.translation.y))
         // print("Camera: x: \(arView.cameraTransform.translation.x), z: \(arView.cameraTransform.translation.x)")
-        
-        if frame.camera.trackingState != lastTrackingState {
-            
-            /*
-             switch frame.camera.trackingState {
-             
-             case .notAvailable:
-             print("Tracking not available")
-             case .limited(let reason):
-             print("Tracking limited:")
-             switch reason {
-             case .excessiveMotion:
-             print("  Too much camera movement")
-             case .insufficientFeatures:
-             print("  Insufficient features")
-             case .relocalizing:
-             print("  Relocalizing")
-             default:
-             print("  Unknown reason")
-             }
-             case .normal:
-             print("TRACKING  NORMAL")
-             
-             }
-             */
-        }
+
         
         let destinationPoint = self.translationFromScreenPoint(point: CGPoint(x: self.arView.bounds.height * 0.50, y: self.arView.bounds.width * 0.50))
         coordinates.text = "(\(String(format: "%.2f", destinationPoint.x)), \(String(format: "%.2f", destinationPoint.y)))"
@@ -1511,156 +1648,131 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
             // Subtract time for processed frame from accumulated time
             accumulatedTransmissionTime -= timePerFrame
             
-            //let requiredTimeInterval = (1 / channels.imageProcessingFPS)
-            //if abs(fpsTimer.timeIntervalSinceNow) > requiredTimeInterval {
-            
-            //fpsTimer = Date()
-            
             debugFrameCount += 1
-            if abs(debugTestTime.timeIntervalSinceNow) > 10 {
+            if abs(debugTestTime.timeIntervalSinceNow) >= 10 {
                 print("Debug frames processes per sec: \(debugFrameCount / 10)")
                 debugFrameCount = 0
                 debugTestTime = Date()
             }
-            
+
             // HDR
            if (abs(self.transmitImageFeedTimer.timeIntervalSinceNow) >= 1 / 30) {
                 self.transmitImageFeedTimer = Date()
                 let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
             //print("image feed devices: \(devicesRequiringImageFeed)")
-                if devicesRequiringImageFeed.count > 0 {
-                    
-                    DispatchQueue.global(qos: .background).sync {
-                        
-                        let jpegImage = pixelBufferToJPEG(pixelBuffer: frame.capturedImage)
-                        
-                        //let height = CVPixelBufferGetHeight(frame.capturedImage)
-                        // let width = CVPixelBufferGetWidth(frame.capturedImage)
-                        //let pixelFormat = CVPixelBufferGetPixelFormatType(frame.capturedImage)
-                        //print("Image \(height)x\(width), pixelformat: \(pixelFormat)")
-                        
-                        //let pixelBufferData = pixelBufferToData(pixelBuffer: frame.capturedImage)
-                        
-                        
-                        for sourceDevice in devicesRequiringImageFeed {
-                            //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
-                            self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: jpegImage)
-                        }
-                    }
-                    
-                    /*
-                    DispatchQueue.global(qos: .background).sync {
-                        
-                        let (pixelBufferData, width, height) = self.scaledPixelBufferToData(pixelBuffer: frame.capturedImage, scale: 0.5)!
-                        
-                        //let height = CVPixelBufferGetHeight(frame.capturedImage)
-                        // let width = CVPixelBufferGetWidth(frame.capturedImage)
-                        let pixelFormat = CVPixelBufferGetPixelFormatType(frame.capturedImage)
-                        //print("Image \(height)x\(width), pixelformat: \(pixelFormat)")
-                        
-                        //let pixelBufferData = pixelBufferToData(pixelBuffer: frame.capturedImage)
-                        
-                        
-                        for sourceDevice in devicesRequiringImageFeed {
-                            //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
-                            self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: pixelBufferData)
-                        }
-                    }
-                     */
-                    return()
-                    
-                    //print("Pixel buffer data: \(pixelBufferData?.count)")
-                    
-                    if let image = UIImage(pixelBuffer: frame.capturedImage) {
+               if devicesRequiringImageFeed.count > 0 {
+                   
+                   
+                   DispatchQueue.global(qos: .userInitiated).async {
+                       
+                       //print("Pixel buffer size: \(CVPixelBufferGetDataSize(frame.capturedImage))")
+                       
+                       let jpegImage = self.pixelBufferToJPEG(pixelBuffer: frame.capturedImage, compressionQuality: 0.8)
+                       
+                       //let height = CVPixelBufferGetHeight(frame.capturedImage)
+                       //let width = CVPixelBufferGetWidth(frame.capturedImage)
+                       //let pixelFormat = CVPixelBufferGetPixelFormatType(frame.capturedImage)
+                       //print("Image \(height)x\(width), pixelformat: \(pixelFormat)")
+                       
+                       //let pixelBufferData = pixelBufferToData(pixelBuffer: frame.capturedImage)
+                       
+                       DispatchQueue.main.async {
+                           for sourceDevice in devicesRequiringImageFeed {
+                               //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
+                               /*
+                                if let (pixelData, _, _) = self.scaledPixelBufferToData(pixelBuffer: frame.capturedImage, scale: 0.30) {
+                                print("Pixel Data: \(pixelData!.count)")
+                                self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: pixelData)
+                                }
+                                */
+                               print("Jpeg: \(jpegImage?.count)")
+                               
+                               self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: jpegImage)
+                           }
+                       }
+                   }
 
-                        //if let scaledImage = UIImage.scale(image: image, by: scaleFactor) {
-                            
-                            
-                            convertUIImageToJPEGDataInBackground(image: image, compressionQuality: 0.1) { jpegData in
-                                guard let imageData = jpegData else {
-                                    print("Failed to convert UIImage to JPEG data.")
-                                    return
-                                }
-                                
-                                //print("Image size: \(imageData.count)")
-                                // Use the JPEG data (e.g., save it, send it to a server, etc.)
-                                // Make sure to perform UI-related tasks on the main thread.
-                                
-                                for sourceDevice in devicesRequiringImageFeed {
-                                    //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
-                                    self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: Common.isHub(sourceDevice: sourceDevice), type: .image, data: imageData)
-                                }
-                                //State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
-                                
-                                
-                            }
-                            
-                            
-                        //}
-                    }
-                }
+               }
 
             }
 
-
-                
-                /*
-                if (abs(self.transmitImageFeedTimer.timeIntervalSinceNow) >= 1.0) {
-                    self.transmitImageFeedTimer = Date()
-*/
-
-                /*
-                    if let image = UIImage(pixelBuffer: frame.capturedImage)  {
-                        
-                        
-                        //if let imageData = image.jpegData(compressionQuality: 1.0) {
-
-                            //DispatchQueue.global().async {
-                                for sourceDevice in devicesRequiringImageFeed {
-                                    //print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
-                                    //self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
-                                }
-                                //State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
-                            //}
-                        //}
-                         
-                      */
-                    
-               // }
-                 
-               // }
-           // }
-            
-            
-            /*
-            captureScreenshot(completion: { screenshot in
-                guard let capturedImage = screenshot else {
-                    print("Failed to capture screenshot.")
-                    return
-                }
-                
-                let devicesRequiringImageFeed = State.shared.devicesRequiringImageFeed()
-                //print("image feed devices: \(devicesRequiringImageFeed)")
-                if devicesRequiringImageFeed.count > 0 {
-                    if (abs(self.transmitImageFeedTimer.timeIntervalSinceNow) >= 1.0) {
-                        self.transmitImageFeedTimer = Date()
-
-                            if let image = screenshot {
-                                if let imageData = image.jpegData(compressionQuality: 1.0) {
-                                    State.shared.currentDeviceState.activeImageFeeds = devicesRequiringImageFeed.count
-                                    for sourceDevice in devicesRequiringImageFeed {
-                                        print("Sending image feed from \(Common.currentDevice()) to \(sourceDevice)")
-                                        self.channels.sendContentTypeToSourceDevice(sourceDevice, toServer: false, type: .image, data: imageData)
-                                    }
-                                }
-                            }
-                        
-                    }
-                }
-            }) */
         }
     }
     
+    func pixelBufferToJPEG(pixelBuffer: CVPixelBuffer, compressionQuality: CGFloat = 0.8) -> Data? {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let context = CIContext()
+
+        // Calculate the aspect ratio of the pixel buffer
+        let bufferWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let bufferHeight = CVPixelBufferGetHeight(pixelBuffer)
+        let bufferAspectRatio = CGFloat(bufferWidth) / CGFloat(bufferHeight)
+        
+        //print("Input size: \(bufferWidth), \(bufferHeight)")
+        
+        // Set the output size to preserve the aspect ratio
+        let outputWidth = CGFloat(min(bufferWidth, bufferHeight))
+        let outputHeight = outputWidth / bufferAspectRatio
+        let outputSize = CGSize(width: outputWidth, height: outputHeight)
+
+        if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+            let data = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(data as CFMutableData, UTType.jpeg.identifier as CFString, 1, nil) else {
+                return nil
+            }
+            let properties: [CFString: Any] = [
+                kCGImageDestinationImageMaxPixelSize: outputSize.width,
+                kCGImageDestinationLossyCompressionQuality: compressionQuality
+            ]
+            CGImageDestinationSetProperties(destination, properties as CFDictionary)
+            CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
+            guard CGImageDestinationFinalize(destination) else {
+                return nil
+            }
+            return data as Data
+        }
+        return nil
+    }
+    
+    
+    
+    func pixelBufferToJPEG(pixelBuffer: CVPixelBuffer) -> Data? {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let context = CIContext()
+        
+        // Calculate the aspect ratio of the pixel buffer
+        let bufferWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let bufferHeight = CVPixelBufferGetHeight(pixelBuffer)
+        let bufferAspectRatio = CGFloat(bufferWidth) / CGFloat(bufferHeight)
+        
+        //print("Input size: \(bufferWidth), \(bufferHeight)")
+        
+        // Set the output size to preserve the aspect ratio
+        let outputWidth = CGFloat(min(bufferWidth, bufferHeight))
+        let outputHeight = outputWidth / bufferAspectRatio
+        let outputSize = CGSize(width: outputWidth, height: outputHeight)
+        
+        //print("Output size: \(outputSize)")
+        
+        if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+            let data = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(data as CFMutableData, UTType.jpeg.identifier as CFString, 1, nil) else {
+                return nil
+            }
+            let properties: [CFString: Any] = [
+                kCGImageDestinationImageMaxPixelSize: outputSize.width
+            ]
+            CGImageDestinationSetProperties(destination, properties as CFDictionary)
+            CGImageDestinationAddImage(destination, cgImage, nil)
+            guard CGImageDestinationFinalize(destination) else {
+                return nil
+            }
+            return data as Data
+        }
+        return nil
+    }
+    
+    /*
     func pixelBufferToJPEG(pixelBuffer: CVPixelBuffer) -> Data? {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let context = CIContext(options: nil)
@@ -1677,12 +1789,13 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
         guard let destination = CGImageDestinationCreateWithData(data as CFMutableData, kUTTypeJPEG, 1, nil) else {
             return nil
         }
-        
+
         CGImageDestinationAddImage(destination, cgImage, options)
         CGImageDestinationFinalize(destination)
         
         return data as Data
     }
+    */
     
     func scaledPixelBufferToData(pixelBuffer: CVPixelBuffer, scale: CGFloat) -> (data: Data?, width: Int, height: Int)? {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
@@ -1819,10 +1932,6 @@ class ViewController: UIViewController, ARSessionDelegate, UIGestureRecognizerDe
 }
 
 
-
-
-
-
 extension UIImage {
     class func resize(image: UIImage, targetSize: CGSize) -> UIImage {
         let size = image.size
@@ -1852,6 +1961,11 @@ extension UIImage {
     class func scale(image: UIImage, by scale: CGFloat) -> UIImage? {
         let size = image.size
         let scaledSize = CGSize(width: size.width * scale, height: size.height * scale)
+        return UIImage.resize(image: image, targetSize: scaledSize)
+    }
+    
+    class func scale(image: UIImage, width width: CGFloat, height height: CGFloat) -> UIImage? {
+        let scaledSize = CGSize(width: width, height: height)
         return UIImage.resize(image: image, targetSize: scaledSize)
     }
 }

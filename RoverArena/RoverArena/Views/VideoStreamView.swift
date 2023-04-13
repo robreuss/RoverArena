@@ -8,6 +8,8 @@
 import Foundation
 import UIKit
 import RoverFramework
+import RealityKit
+import UniformTypeIdentifiers
 
 @IBDesignable
 class VideoStreamView: UIView {
@@ -36,7 +38,17 @@ class VideoStreamView: UIView {
         }
     }
     
-    override init(frame: CGRect) {
+    func pixelBuffer(pixelBuffer: CVPixelBuffer) {
+        
+        if let image = convertPixelBufferToUIImage(pixelBuffer) {
+            self.image = image
+        } else {
+            fatalError("CVPixelBuffer to UIImage failure")
+        }
+       
+    }
+    
+    required override init(frame: CGRect) {
         super.init(frame: frame)
 
         setup()
@@ -57,7 +69,7 @@ class VideoStreamView: UIView {
         let sourceLabelHeight: CGFloat = 25.0
         imageView.frame = CGRectMake(0.0, 0.0, bounds.width, bounds.height)
         addSubview(imageView)
-        imageView.contentMode = .scaleAspectFill
+        imageView.contentMode = .scaleAspectFit
         imageView.backgroundColor = UIColor.clear
         imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         NSLayoutConstraint.activate([
@@ -81,6 +93,54 @@ class VideoStreamView: UIView {
     func reset() {
         videoSourceLabel.text = "  \(videoSourceText)"
         imageView.image = UIImage()
+    }
+    
+    func convertPixelBufferToUIImage(_ pixelBuffer: CVPixelBuffer) -> UIImage? {
+        // Create a CIImage from the pixel buffer
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        
+        // Create a CIContext and convert the CIImage to a CGImage
+        let context = CIContext()
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
+            return nil
+        }
+        
+        // Create a UIImage from the CGImage
+        let uiImage = UIImage(cgImage: cgImage)
+        
+        return uiImage
+    }
+
+    func pixelBufferToJPEG(pixelBuffer: CVPixelBuffer) -> Data? {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let context = CIContext()
+        
+        // Calculate the aspect ratio of the pixel buffer
+        let bufferWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let bufferHeight = CVPixelBufferGetHeight(pixelBuffer)
+        let bufferAspectRatio = CGFloat(bufferWidth) / CGFloat(bufferHeight)
+        
+        // Set the output size to preserve the aspect ratio
+        let outputWidth = CGFloat(min(bufferWidth, bufferHeight))
+        let outputHeight = outputWidth / bufferAspectRatio
+        let outputSize = CGSize(width: outputWidth, height: outputHeight)
+        
+        if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+            let data = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(data as CFMutableData, UTType.jpeg.identifier as CFString, 1, nil) else {
+                return nil
+            }
+            let properties: [CFString: Any] = [
+                kCGImageDestinationImageMaxPixelSize: outputSize.width
+            ]
+            CGImageDestinationSetProperties(destination, properties as CFDictionary)
+            CGImageDestinationAddImage(destination, cgImage, nil)
+            guard CGImageDestinationFinalize(destination) else {
+                return nil
+            }
+            return data as Data
+        }
+        return nil
     }
     
 }
